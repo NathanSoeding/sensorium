@@ -359,14 +359,14 @@ class MlpMonitorRetina(Perspective):
         size = max(stimulus.size(0), perspective.size(0))
 
         rmat = self.rmat(perspective).expand(size, -1, -1)
-        #rays = self.retina.rays(rmat)
-        #grid = self.monitor.project(rays)
+        rays = self.retina.rays(rmat)
+        grid = self.monitor.project(rays)
 
-        #pixels = self.monitor_pixel(stimulus).expand(size, -1, -1, -1)
-        #pixels = isotropic_grid_sample_2d(pixels, grid=grid, pad_mode=pad_mode)
-        #pixels = self.retina_pixel(pixels)
+        pixels = self.monitor_pixel(stimulus).expand(size, -1, -1, -1)
+        pixels = isotropic_grid_sample_2d(pixels, grid=grid, pad_mode=pad_mode)
+        pixels = self.retina_pixel(pixels)
 
-        return rmat
+        return pixels
 
     def inverse(self, stimulus, perspective, height=144, width=256, pad_mode="zeros"):
         """

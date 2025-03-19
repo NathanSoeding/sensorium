@@ -93,7 +93,7 @@ class Retina(nn.Module):
         return rays
 
 class Monitor(nn.Module):
-    def __init__(self, init_center_x=0, init_center_y=0, init_center_z=0.5, init_center_std=0.00, init_angle_x=0, init_angle_y=0, init_angle_z=0, init_angle_std=0.00, eps=1e-5, device=None):
+    def __init__(self, init_center_x=0, init_center_y=0, init_center_z=0.5, init_center_std=0.05, init_angle_x=0, init_angle_y=0, init_angle_z=0, init_angle_std=0.05, eps=1e-5, device=None):
         super().__init__()
 
         center = [
@@ -112,14 +112,14 @@ class Monitor(nn.Module):
         self.angle = nn.Parameter(torch.tensor(angle, dtype=torch.float32, device=device))
         #self.angle = torch.tensor(angle, dtype=torch.float32, device=device)
 
-        #self.center_std = nn.Parameter(
-        #    torch.tensor(init_center_std, dtype=torch.float32, device=device)
-        #)
-        self.center_std = torch.tensor(init_center_std, dtype=torch.float32, device=device)
-        #self.angle_std = nn.Parameter(
-        #    torch.tensor(init_angle_std, dtype=torch.float32, device=device)
-        #)
-        self.angle_std = torch.tensor(init_angle_std, dtype=torch.float32, device=device)
+        self.center_std = nn.Parameter(
+            torch.tensor(init_center_std, dtype=torch.float32, device=device)
+        )
+        #self.center_std = torch.tensor(init_center_std, dtype=torch.float32, device=device)
+        self.angle_std = nn.Parameter(
+            torch.tensor(init_angle_std, dtype=torch.float32, device=device)
+        )
+        #dself.angle_std = torch.tensor(init_angle_std, dtype=torch.float32, device=device)
         self.eps = float(eps)
 
     # Optimize position of monitor

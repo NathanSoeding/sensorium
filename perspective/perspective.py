@@ -37,16 +37,25 @@ def angles_to_rmat3d(angles):
 
 class Retina(nn.Module):
     def __init__(
-        self, degree=70, height=144, width=256, mlp_features=[12, 12], device=None
+        self, degree=75, height=144, width=192, dim_in=2, dim_out=3, mlp_features=16, mlp_layers=3, device=None
     ):
         super().__init__()
 
         self.grid = self.create_grid(height, width, degree, device=device)
 
         layers = []
-        for d_in, d_out in zip([2] + mlp_features, mlp_features + [3]):
-            layers.append(nn.Linear(d_in, d_out))
-            layers.append(nn.ReLU())
+
+        features = [dim_in] + [mlp_features] * mlp_layers + [dim_out]
+        non_linearities = [nn.GELU()] * mlp_layers + [None]
+
+        for in_features, out_features, nonlinear in zip(
+            features[:-1], 
+            features[1:], 
+            non_linearities,
+        ):
+            layers.append(nn.Linear(in_features, out_features))
+            if nonlinear is not None:
+                layers.append(nonlinear)
 
         self.mlp = nn.Sequential(*layers)
 

@@ -2,24 +2,21 @@ import warnings
 
 import numpy as np
 import torch
-from torch import nn
-
 from neuralpredictors.layers import activations
-from neuralpredictors.layers.encoders.base import Encoder
-
-from nnfabrik.utility.nn_helpers import set_random_seed, get_dims_for_loader_dict
-from neuralpredictors.utils import get_module_output
-from neuralpredictors.layers.shifters import MLPShifter, StaticAffine2dShifter
 from neuralpredictors.layers.cores import (
-    Stacked2dCore,
-    SE2dCore,
     RotationEquivariant2dCore,
+    SE2dCore,
+    Stacked2dCore,
 )
-
+from neuralpredictors.layers.encoders.base import Encoder
+from neuralpredictors.layers.shifters import MLPShifter, StaticAffine2dShifter
+from neuralpredictors.utils import get_module_output
+from nnfabrik.utility.nn_helpers import get_dims_for_loader_dict, set_random_seed
 from sensorium.models.readouts import MultipleFullGaussian2d
 from sensorium.models.utility import prepare_grid
+from torch import nn
 
-from perspective import Retina, Monitor, Perspective
+from perspective import Monitor, Perspective, Retina
 
 
 class FiringRateEncoder(Encoder):
@@ -50,13 +47,15 @@ class FiringRateEncoder(Encoder):
         super().__init__()
         self.core = core
         self.readout = readout
-        self.perspective=perspective
+        self.perspective = perspective
         self.shifter = shifter
         self.modulator = modulator
         self.offset = elu_offset
 
         if nonlinearity_type != "elu" and not np.isclose(elu_offset, 0.0):
-            warnings.warn("If `nonlinearity_type` is not 'elu', `elu_offset` will be ignored")
+            warnings.warn(
+                "If `nonlinearity_type` is not 'elu', `elu_offset` will be ignored"
+            )
         if nonlinearity_type == "elu":
             self.nonlinearity_fn = nn.ELU()
         elif nonlinearity_type == "identity":
@@ -85,7 +84,7 @@ class FiringRateEncoder(Encoder):
             if pupil_center is None:
                 raise ValueError("pupil_center is not given")
             x = self.perspective(inputs, pupil_center)
-            self.shifter=None
+            self.shifter = None
         else:
             x = inputs
 
@@ -100,7 +99,9 @@ class FiringRateEncoder(Encoder):
             shift = self.shifter[data_key](pupil_center, trial_idx)
 
         x = self.readout(x, data_key=data_key, shift=shift, **kwargs)
-        x = x[None, ...] if len(x.shape) == 1 else x  # keep dimensions if only one image was passed
+        x = (
+            x[None, ...] if len(x.shape) == 1 else x
+        )  # keep dimensions if only one image was passed
 
         if self.modulator:
             if behavior is None:
@@ -117,6 +118,7 @@ class FiringRateEncoder(Encoder):
 
     def predict_variance(self, x, *args, data_key=None, **kwargs):
         return self.forward(x, *args, data_key=data_key, **kwargs)
+
 
 def stacked_core_full_gauss_readout(
     dataloaders,
@@ -202,7 +204,9 @@ def stacked_core_full_gauss_readout(
     )
 
     set_random_seed(seed)
-    grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(grid_mean_predictor, dataloaders)
+    grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(
+        grid_mean_predictor, dataloaders
+    )
 
     core = Stacked2dCore(
         input_channels=core_input_channels,

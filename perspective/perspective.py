@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+
 def angles_to_rmat3d(angles):
     x, y, z = torch.unbind(angles, axis=-1)
     N = len(x)
@@ -35,6 +36,7 @@ def angles_to_rmat3d(angles):
 
     return A @ B @ C
 
+
 class Scale(nn.Module):
     def __init__(self, gamma):
         super().__init__()
@@ -43,14 +45,22 @@ class Scale(nn.Module):
     def forward(self, x):
         return x * self.gamma
 
+
 class Retina(nn.Module):
     def __init__(
-        self, degree=75, height=36, width=54, dim_in=2, dim_out=3, mlp_features=16, mlp_layers=3,
+        self,
+        degree=75,
+        height=36,
+        width=54,
+        dim_in=2,
+        dim_out=3,
+        mlp_features=16,
+        mlp_layers=3,
     ):
         super().__init__()
 
         grid = self.create_grid(height, width, degree)
-        self.register_buffer('grid', grid)
+        self.register_buffer("grid", grid)
 
         layers = []
 
@@ -66,7 +76,9 @@ class Retina(nn.Module):
 
             if nonlinear is not None:
                 layers.append(nonlinear)
-                layers.append(Scale(1.7015043497085571))  # Scaling factor to perserve varience
+                layers.append(
+                    Scale(1.7015043497085571)
+                )  # Scaling factor to perserve varience
 
         self.mlp = nn.Sequential(*layers)
 
@@ -112,10 +124,20 @@ class Retina(nn.Module):
 
         return rays
 
+
 class Monitor(nn.Module):
     def __init__(
-            self, init_center_x=0, init_center_y=0, init_center_z=0.5, init_center_std=0.05, init_angle_x=0, init_angle_y=0, init_angle_z=0, init_angle_std=0.05, eps=1e-5,
-            ):
+        self,
+        init_center_x=0,
+        init_center_y=0,
+        init_center_z=0.5,
+        init_center_std=0.05,
+        init_angle_x=0,
+        init_angle_y=0,
+        init_angle_z=0,
+        init_angle_std=0.05,
+        eps=1e-5,
+    ):
         super().__init__()
 
         center = [
@@ -124,7 +146,7 @@ class Monitor(nn.Module):
             init_center_z,
         ]
         self.center = nn.Parameter(torch.tensor(center, dtype=torch.float32))
-        #self.center = torch.tensor(center, dtype=torch.float32, device=device)
+        # self.center = torch.tensor(center, dtype=torch.float32, device=device)
 
         angle = [
             init_angle_x,
@@ -132,16 +154,14 @@ class Monitor(nn.Module):
             init_angle_z,
         ]
         self.angle = nn.Parameter(torch.tensor(angle, dtype=torch.float32))
-        #self.angle = torch.tensor(angle, dtype=torch.float32, device=device)
+        # self.angle = torch.tensor(angle, dtype=torch.float32, device=device)
 
         self.center_std = nn.Parameter(
             torch.tensor(init_center_std, dtype=torch.float32)
         )
-        #self.center_std = torch.tensor(init_center_std, dtype=torch.float32, device=device)
-        self.angle_std = nn.Parameter(
-            torch.tensor(init_angle_std, dtype=torch.float32)
-        )
-        #dself.angle_std = torch.tensor(init_angle_std, dtype=torch.float32, device=device)
+        # self.center_std = torch.tensor(init_center_std, dtype=torch.float32, device=device)
+        self.angle_std = nn.Parameter(torch.tensor(init_angle_std, dtype=torch.float32))
+        # dself.angle_std = torch.tensor(init_angle_std, dtype=torch.float32, device=device)
         self.eps = float(eps)
 
     # Optimize position of monitor
@@ -198,6 +218,7 @@ class Monitor(nn.Module):
             mode="bilinear",
             align_corners=False,
         )
+
 
 # Combines Retina and Monitor
 

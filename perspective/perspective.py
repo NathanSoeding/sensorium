@@ -35,13 +35,22 @@ def angles_to_rmat3d(angles):
 
     return A @ B @ C
 
+class Scale(nn.Module):
+    def __init__(self, gamma):
+        super().__init__()
+        self.gamma = gamma
+
+    def forward(self, x):
+        return x * self.gamma
+
 class Retina(nn.Module):
     def __init__(
-        self, degree=75, height=144, width=192, dim_in=2, dim_out=3, mlp_features=16, mlp_layers=3, device=None
+        self, degree=75, height=36, width=54, dim_in=2, dim_out=3, mlp_features=16, mlp_layers=3,
     ):
         super().__init__()
 
-        self.grid = self.create_grid(height, width, degree, device=device)
+        grid = self.create_grid(height, width, degree)
+        self.register_buffer('grid', grid)
 
         layers = []
 
@@ -49,20 +58,22 @@ class Retina(nn.Module):
         non_linearities = [nn.GELU()] * mlp_layers + [None]
 
         for in_features, out_features, nonlinear in zip(
-            features[:-1], 
-            features[1:], 
-            non_linearities,
+            features[:-1], features[1:], non_linearities
         ):
-            layers.append(nn.Linear(in_features, out_features))
+            linear = nn.Linear(in_features, out_features)
+            linear = nn.utils.parametrizations.weight_norm(linear)
+            layers.append(linear)
+
             if nonlinear is not None:
                 layers.append(nonlinear)
+                layers.append(Scale(1.7015043497085571))  # Scaling factor to perserve varience
 
         self.mlp = nn.Sequential(*layers)
 
-    def create_grid(self, height, width, degree, device):
+    def create_grid(self, height, width, degree):
         # Create isotropic grid of retina
-        x_axis = torch.linspace(-1, 1, width, device=device)
-        y_axis = torch.linspace(-1, 1, height, device=device) * height / width
+        x_axis = torch.linspace(-1, 1, width)
+        y_axis = torch.linspace(-1, 1, height) * height / width
         scale = (width - 1) / width
 
         x, y = torch.meshgrid(
@@ -102,7 +113,9 @@ class Retina(nn.Module):
         return rays
 
 class Monitor(nn.Module):
-    def __init__(self, init_center_x=0, init_center_y=0, init_center_z=0.5, init_center_std=0.05, init_angle_x=0, init_angle_y=0, init_angle_z=0, init_angle_std=0.05, eps=1e-5, device=None):
+    def __init__(
+            self, init_center_x=0, init_center_y=0, init_center_z=0.5, init_center_std=0.05, init_angle_x=0, init_angle_y=0, init_angle_z=0, init_angle_std=0.05, eps=1e-5,
+            ):
         super().__init__()
 
         center = [
@@ -110,7 +123,7 @@ class Monitor(nn.Module):
             init_center_y,
             init_center_z,
         ]
-        self.center = nn.Parameter(torch.tensor(center, dtype=torch.float32, device=device))
+        self.center = nn.Parameter(torch.tensor(center, dtype=torch.float32))
         #self.center = torch.tensor(center, dtype=torch.float32, device=device)
 
         angle = [
@@ -118,15 +131,15 @@ class Monitor(nn.Module):
             init_angle_y,
             init_angle_z,
         ]
-        self.angle = nn.Parameter(torch.tensor(angle, dtype=torch.float32, device=device))
+        self.angle = nn.Parameter(torch.tensor(angle, dtype=torch.float32))
         #self.angle = torch.tensor(angle, dtype=torch.float32, device=device)
 
         self.center_std = nn.Parameter(
-            torch.tensor(init_center_std, dtype=torch.float32, device=device)
+            torch.tensor(init_center_std, dtype=torch.float32)
         )
         #self.center_std = torch.tensor(init_center_std, dtype=torch.float32, device=device)
         self.angle_std = nn.Parameter(
-            torch.tensor(init_angle_std, dtype=torch.float32, device=device)
+            torch.tensor(init_angle_std, dtype=torch.float32)
         )
         #dself.angle_std = torch.tensor(init_angle_std, dtype=torch.float32, device=device)
         self.eps = float(eps)

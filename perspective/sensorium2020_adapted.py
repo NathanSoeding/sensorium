@@ -16,7 +16,7 @@ from sensorium.models.readouts import MultipleFullGaussian2d
 from sensorium.models.utility import prepare_grid
 from torch import nn
 
-from perspective import Monitor, Perspective, Retina
+from perspective import Perspective
 
 
 class FiringRateEncoder(Encoder):
@@ -80,11 +80,9 @@ class FiringRateEncoder(Encoder):
         **kwargs
     ):
         if self.perspective:
-            # if shift is defined - no need to change it
             if pupil_center is None:
                 raise ValueError("pupil_center is not given")
-            x = self.perspective(inputs, pupil_center)
-            self.shifter = None
+            x = self.perspective[data_key](inputs, pupil_center)
         else:
             x = inputs
 
@@ -273,7 +271,8 @@ def stacked_core_full_gauss_readout(
             )
 
     if perspective is True:
-        perspective = Perspective(Retina(), Monitor())
+        data_keys = [i for i in dataloaders.keys()]
+        perspective = Perspective(data_keys)
 
     model = FiringRateEncoder(
         core=core,

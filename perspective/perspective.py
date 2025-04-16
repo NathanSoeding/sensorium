@@ -37,6 +37,24 @@ def angles_to_rmat3d(angles):
     return A @ B @ C
 
 
+class PixelTransform(nn.Module):
+    def __init__(self, max_power=1, init_scale=1, init_offset=0, eps=1e-5):
+        super().__init__()
+
+        self.max_power = max_power
+        self.eps = eps
+
+        self.logit = nn.Parameter(torch.zeros(1))
+        self.scale = nn.Parameter(torch.full([1], init_scale, dtype=torch.float32))
+        self.offset = nn.Parameter(torch.full([1], init_offset, dtype=torch.float32))
+
+    @property
+    def power(self):
+        return self.logit.sigmoid() * self.max_power
+    
+    def forward(self, pixels):
+        return pixels.add(self.eps).pow(self.power).mul(self.scale).add(self.offset)
+
 class Scale(nn.Module):
     def __init__(self, gamma):
         super().__init__()
@@ -72,13 +90,11 @@ class Retina(nn.Module):
         ):
             linear = nn.Linear(in_features, out_features)
             linear = nn.utils.parametrizations.weight_norm(linear)
+            nn.init.zeros_(linear.bias)
             layers.append(linear)
 
             if nonlinear is not None:
                 layers.append(nonlinear)
-                layers.append(
-                    Scale(1.7015043497085571)
-                )  # Scaling factor to perserve varience
 
         self.mlp = nn.Sequential(*layers)
 
@@ -146,7 +162,6 @@ class Monitor(nn.Module):
             init_center_z,
         ]
         self.center = nn.Parameter(torch.tensor(center, dtype=torch.float32))
-        # self.center = torch.tensor(center, dtype=torch.float32, device=device)
 
         angle = [
             init_angle_x,
@@ -154,14 +169,11 @@ class Monitor(nn.Module):
             init_angle_z,
         ]
         self.angle = nn.Parameter(torch.tensor(angle, dtype=torch.float32))
-        # self.angle = torch.tensor(angle, dtype=torch.float32, device=device)
 
         self.center_std = nn.Parameter(
             torch.tensor(init_center_std, dtype=torch.float32)
         )
-        # self.center_std = torch.tensor(init_center_std, dtype=torch.float32, device=device)
         self.angle_std = nn.Parameter(torch.tensor(init_angle_std, dtype=torch.float32))
-        # dself.angle_std = torch.tensor(init_angle_std, dtype=torch.float32, device=device)
         self.eps = float(eps)
 
     # Optimize position of monitor
@@ -223,16 +235,29 @@ class Monitor(nn.Module):
 # Combines Retina and Monitor
 
 
-class Perspective(nn.Module):
-    def __init__(self, retina, monitor):
+class SinglePerspective(nn.Module):
+    def __init__(self, retina, monitor, pixel_transform, static_power=1.7):
         super().__init__()
 
         self.retina = retina
         self.monitor = monitor
+        self.pixel_transform = pixel_transform
+        self.static_power = static_power
 
     def forward(self, img, pupil_center):
         rays = self.retina.rays(pupil_center)
         grid = self.monitor.project(rays)
-        pixels = self.monitor.sample_screen(img, grid)
+
+        pixels = img.pow(self.static_power)
+        pixels = self.monitor.sample_screen(pixels, grid)
+        pixels = self.pixel_transform(pixels)
 
         return pixels
+
+
+class Perspective(nn.ModuleDict):
+    def __init__(self, data_keys):
+        super().__init__()
+
+        for k in data_keys:
+            self.add_module(k, SinglePerspective(Retina(), Monitor(), PixelTransform()))

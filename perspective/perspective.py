@@ -248,7 +248,7 @@ class SinglePerspective(nn.Module):
         rays = self.retina.rays(pupil_center)
         grid = self.monitor.project(rays)
 
-        pixels = img.pow(self.static_power)
+        pixels = (img / 255.0).pow(self.static_power)
         pixels = self.monitor.sample_screen(pixels, grid)
         pixels = self.pixel_transform(pixels)
 

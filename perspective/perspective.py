@@ -71,7 +71,7 @@ class Retina(nn.Module):
         height=36,
         width=54,
         dim_in=2,
-        dim_out=3,
+        dim_out=2,
         mlp_features=16,
         mlp_layers=3,
     ):
@@ -135,6 +135,9 @@ class Retina(nn.Module):
     # Take pupil center to return rotated grid of retina rays
     def rays(self, pupil_center):
         angles = self.mlp(pupil_center)
+        pad_zeros = torch.zeros((angles.shape[0], 1), device=angles.device)
+        angles = torch.concat([angles, pad_zeros], axis=1)
+        
         rmat = angles_to_rmat3d(angles)
         rays = self.rotate_retina(rmat)
 
@@ -190,6 +193,7 @@ class Monitor(nn.Module):
                 angle + torch.randn(batch_size, 3, device=angle.device) * self.angle_std
             )
 
+        #angle[2] = 0  # Don't rotate screen
         x, y, z = angles_to_rmat3d(angle).unbind(2)
 
         return center, x, y, z

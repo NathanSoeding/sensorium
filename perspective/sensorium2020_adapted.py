@@ -79,13 +79,13 @@ class FiringRateEncoder(Encoder):
         detach_core=False,
         **kwargs
     ):
+        x = inputs
+        
         if self.perspective:
             if pupil_center is None:
                 raise ValueError("pupil_center is not given")
-            x = self.perspective[data_key](inputs, pupil_center)
-        else:
-            x = inputs
-
+            x = self.perspective[data_key](x, pupil_center)
+        
         x = self.core(x)
         if detach_core:
             x = x.detach()

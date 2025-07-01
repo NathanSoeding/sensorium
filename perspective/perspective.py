@@ -69,7 +69,7 @@ class Retina(nn.Module):
         self,
         degree=75,
         height=36,
-        width=54,
+        width=64,
         dim_in=2,
         dim_out=2,
         mlp_features=16,
@@ -257,16 +257,24 @@ class SinglePerspective(nn.Module):
 
         pixels = img
 
-        pixels[:, 0, :, :] = (pixels[:, 0, :, :] / 255.0).pow(self.static_power)
+        img = (pixels[:, None, 0, :, :] / 255.0).pow(self.static_power)
+        behaviour = pixels[:, 1:, :, :]
+        pixels = torch.concat([img, behaviour], axis=1)
+
         pixels = self.monitor.sample_screen(pixels, grid)
-        pixels[:, 0, :, :] = self.pixel_transform(pixels[:, 0, :, :])
+        
+        img = self.pixel_transform(pixels[:, None, 0, :, :])
+        behaviour = pixels[:, 1:, :, :]
+        pixels = torch.concat([img, behaviour], axis=1)
 
         return pixels
 
 
 class Perspective(nn.ModuleDict):
-    def __init__(self, data_keys):
+    def __init__(self, data_keys, retina_degree=75, mlp_features=16, mlp_layers=3):
         super().__init__()
 
         for k in data_keys:
-            self.add_module(k, SinglePerspective(Retina(), Monitor(), PixelTransform()))
+            retina = Retina(degree=retina_degree, mlp_features=mlp_features, mlp_layers=mlp_layers)
+            monitor = Monitor()
+            self.add_module(k, SinglePerspective(retina, monitor, PixelTransform()))

@@ -40,7 +40,8 @@ def standard_trainer(
     cb=None,
     track_training=False,
     detach_core=False,
-    optimizer=None,  
+    optimizer=None,
+    recon_loss_scale=0.0,
     **kwargs
 ):
     """

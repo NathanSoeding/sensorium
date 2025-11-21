@@ -2,9 +2,24 @@ import torch
 from torch import nn
 
 class Autoenc(nn.Module):
-    def __init__(self, input_dim, latent_dim, hidden_dims=[32, 16], batch_norm=False, dropout=0.0, nonlinearity='ReLU', leakyness=0.2):
+    def __init__(
+            self, 
+            input_dim, 
+            latent_dim, 
+            hidden_layers=1, # If 'hidden_dims' is int this specifies amount of layers 
+            hidden_dims=64, # Can be either int or list
+            batch_norm=False, 
+            dropout=0.0, 
+            nonlinearity='ReLU', 
+            leakyness=0.2, 
+        ):
         super(Autoenc, self).__init__()
-        
+    
+        assert (type(hidden_dims) is list) == (hidden_layers is None)
+
+        if type(hidden_dims) is int:
+            hidden_dims = [hidden_dims] * hidden_layers
+
         if nonlinearity == 'ReLU':
             transfer_fn = nn.ReLU()
         elif nonlinearity == 'GELU': 

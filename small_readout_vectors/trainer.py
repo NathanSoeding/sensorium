@@ -212,7 +212,7 @@ def standard_trainer(
                 optimizer.step()
                 optimizer.zero_grad()
 
-        print(loss_sum)
+        #print(loss_sum)
 
     ##### Model evaluation ####################################################################################################
     model.eval()

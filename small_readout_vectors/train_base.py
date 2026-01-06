@@ -13,7 +13,8 @@ def get_args():
     parser = argparse.ArgumentParser(description="PyTorch Training Script")
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--device', type=str, default='cuda:7')
-    parser.add_argument("--output_dir", type=str, default="runs/exp1")
+    parser.add_argument('--output_dir', type=str, default="runs/exp1")
+    parser.add_argument('--hidden_channels', type=int, default=128)
     return parser.parse_args()
 
 def main():
@@ -47,7 +48,7 @@ def main():
     dataloaders = get_data(dataset_fn, dataset_config)
 
     model_config = {
-        'hidden_channels': 128, # original sensorium was 64ch
+        'hidden_channels': args.hidden_channels, # original sensorium was 64ch
         'depth_separable': False,
         'use_avg_reg': False,
         'laplace_padding': None,

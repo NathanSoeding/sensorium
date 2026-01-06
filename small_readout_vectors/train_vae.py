@@ -1,5 +1,5 @@
 import os
-import yaml
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -7,9 +7,17 @@ import argparse
 from nnfabrik.builder import get_data, get_trainer
 
 from modified_neuralpredictors.create_model import stacked_core_full_gauss_readout
-from modified_neuralpredictors.wandb_trainer import standard_trainer
+from modified_neuralpredictors.wandb_trainer_vae import standard_trainer
 
-from ..models.autoencoder import Autoenc
+# Get the absolute path of this script
+current_file = os.path.abspath(__file__)
+current_dir = os.path.dirname(current_file)
+
+# Go up one level to reach the root sensorium directory
+project_root = os.path.dirname(current_dir)  # This is the outer sensorium/
+sys.path.insert(0, project_root)
+
+from models.autoencoder import VAE
 
 def get_args():
     parser = argparse.ArgumentParser(description="Pytorch Training Script")
@@ -23,6 +31,8 @@ def get_args():
     parser.add_argument('--hidden_dims', type=int, nargs='+', default=[64])
     parser.add_argument('--batch_norm', type=bool, default=False)
     parser.add_argument('--nonlinearity', type=str, default='ReLU')
+    parser.add_argument('--poisson_weight', type=float, default=1.0)
+    parser.add_argument('--kld_weight', type=float, default=1.0)
     return parser.parse_args()
 
 def main():
@@ -104,7 +114,7 @@ def main():
         'nonlinearity': args.nonlinearity,
     }
 
-    autoencoder = Autoenc(input_dim=model_config['hidden_channels'], **autoencoder_config)
+    autoencoder = VAE(input_dim=model_config['hidden_channels'], **autoencoder_config)
 
     for key in data_keys:
         model.readout[key].autoencoder = autoencoder
@@ -133,9 +143,12 @@ def main():
         'device': device, 
         'wandb_project': 'small readout vectors',
         'wandb_config': autoencoder_config,
-        'wandb_name': f'autoencoder{autoencoder_config['latent_dim']}',
+        'wandb_name': f'vae{autoencoder_config['latent_dim']}',
         'train_neurons': train_neurons, 
         'validation_neurons': validation_neurons, 
+        'poisson_weight': args.poisson_weight,
+        'kld_weight': args.kld_weight,
+        'vae_latent_dim': autoencoder_config['latent_dim'],
     }
 
     validation_score, trainer_output, state_dict = standard_trainer(
@@ -145,9 +158,6 @@ def main():
         **trainer_config
     )
     torch.save(autoencoder.state_dict(), f'{args.output_dir}/autoencoder_weights.pth')
-    with open(f'{args.output_dir}/data.yaml', 'w') as f:
-        data = autoencoder_config | {'validation_score': validation_score}
-        yaml.dump(data, f, default_flow_style=False)
 
 if __name__ == "__main__":
     main()

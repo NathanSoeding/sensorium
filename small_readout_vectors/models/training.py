@@ -30,7 +30,12 @@ def train_autoenc(
         wandb.run.name = wandb_name
 
     optim = torch.optim.Adam(autoencoder.parameters(), lr=lr_init)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optim, factor=lr_decay, patience=patience)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim, 
+        factor=lr_decay, 
+        patience=patience,
+        mode='max',
+    )
 
     epochs = int(1e15)
 

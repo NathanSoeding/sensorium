@@ -37,12 +37,14 @@ def barlow_loss_fn(model, data_key):
     feature_emb = feature_emb.transpose(0, 1)
     n, b, d = feature_emb.shape
 
-    XcT = feature_emb.transpose(1, 2)  # n x d x b
-    Xc = feature_emb  # n x b x d 
-    cov = torch.bmm(XcT, Xc) / (b - 1)  # batched matrix mult (one cov per neuron)
-    print(cov[0])    
+    cov = torch.bmm(
+        feature_emb.transpose(1, 2), 
+        feature_emb
+    ) / (b - 1)  # batched matrix mult (one cov per neuron)
+
     identity = torch.eye(d, device=cov.device)
     barlow_loss = (cov - identity).pow(2).sum()
+    print(cov[0])
 
     return barlow_loss
 
@@ -330,6 +332,7 @@ def standard_trainer(
             epoch_loss_total /= batch_count
             epoch_loss_main /= batch_count
             epoch_loss_topographic /= batch_count
+            epoch_loss_barlow /= batch_count
             epoch_loss_reg /= batch_count
 
         # Execute callback function if passed in keyword args

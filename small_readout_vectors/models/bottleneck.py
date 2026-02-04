@@ -1,9 +1,42 @@
 import torch
 import torch.nn as nn
 
+class BatchOnlyNorm(nn.Module):
+    def __init__(self, dim, eps=1e-5, momentum=0.1):
+        super().__init__()
+        self.eps = eps
+        self.momentum = momentum
+
+        self.register_buffer("running_mean", torch.zeros(1, dim))
+        self.register_buffer("running_var", torch.ones(1, dim))
+
+    def forward(self, x):
+        b, n, d = x.shape
+
+        if self.training:
+            mean = x.mean(dim=0)                    # (n, d)
+            var = x.var(dim=0, unbiased=False)      # (n, d)
+
+            # update running stats
+            self.running_mean = (
+                (1 - self.momentum) * self.running_mean
+                + self.momentum * mean.mean(dim=0).detach()
+            )
+            self.running_var = (
+                (1 - self.momentum) * self.running_var
+                + self.momentum * var.mean(dim=0).detach()
+            )
+        else:
+            mean = self.running_mean.repeat(n, 1)
+            var = self.running_var.repeat(n, 1)
+
+        x = (x - mean) / torch.sqrt(var + self.eps)
+
+        return x
+        
 class Bottleneck(nn.Module):
     def __init__(self, in_dim, hidden_dims, embedding_dim):
-        super(Bottleneck, self).__init__()
+        super().__init__()
 
         def _get_mlp(in_dim, hidden_dims, embedding_dim):
             layers = []
@@ -21,7 +54,7 @@ class Bottleneck(nn.Module):
         self.feature_mlp = _get_mlp(in_dim, hidden_dims, embedding_dim)
         self.readout_mlp = _get_mlp(in_dim, hidden_dims, embedding_dim)
 
-        self.feature_bn = nn.BatchNorm1d(embedding_dim, affine=False)
+        self.feature_norm = BatchOnlyNorm(embedding_dim)
 
         self.cache = None
 
@@ -35,9 +68,7 @@ class Bottleneck(nn.Module):
         feature_emb = self.feature_mlp(feature_vec)  # batch x num_neurons x d_emb
         readout_emb = self.readout_mlp(readout_vec)  #     1 x num_neurons x d_emb
 
-        feature_emb = self.feature_bn(
-            feature_emb.transpose(1, 2)
-        ).transpose(1, 2)
+        feature_emb = self.feature_norm(feature_emb)
 
         self.cache = feature_emb, readout_emb
 

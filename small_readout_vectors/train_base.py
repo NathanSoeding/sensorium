@@ -19,12 +19,14 @@ def get_args():
     parser.add_argument('--gamma_sigma', type=float, default=0.25)
     parser.add_argument('--topo_w', type=float, default=None)
     parser.add_argument('--final_nonlin', action='store_false', default=True)
-    parser.add_argument('--use_wandb', action='store_false', default=True)
+    parser.add_argument('--no_wandb', action='store_true', default=False)
     parser.add_argument('--topo_k', type=int, default=None)
     parser.add_argument('--init_path', type=str, default=None)
     parser.add_argument('--bottleneck_layers', type=int, nargs='+', default=None)
     parser.add_argument('--barlow_w', type=float, default=None)
     parser.add_argument('--finetune_lr_scale', type=float, default=None)
+    parser.add_argument('--padding', type=int, default=None)
+    parser.add_argument('--batch_size', type=int, default=128)
     return parser.parse_args()
 
 def main():
@@ -37,6 +39,9 @@ def main():
 
     device = args.device
     torch.cuda.set_device(device)
+
+    wandb_name = 'base model'
+    use_wandb = not args.no_wandb
 
     basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
 
@@ -51,7 +56,7 @@ def main():
         "normalize": True,
         "include_behavior": True,
         "include_eye_position": True,
-        "batch_size": 128,
+        "batch_size": args.batch_size,
         "scale": 0.25,
     }
 
@@ -66,6 +71,7 @@ def main():
         'final_nonlinearity': args.final_nonlin,
         'nonlinearity_type': 'AdaptiveELU',
         'pad_input': False,
+        'hidden_padding': args.padding, 
         'stack': -1,
         'layers': 4,
         'input_kern': 11, #  original sensorium was 'input_kern': 9,
@@ -89,23 +95,28 @@ def main():
         'batch_norm_scale': [True, True, True, False],
         'core_bias': [True, True, True, False],
         'regularizer_type': "adaptive_log_norm",
-        'gamma_sigma' : args.gamma_sigma,
+        'gamma_sigma': args.gamma_sigma,
     }
 
+    model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
+        
+    if args.init_path is not None:
+        print(f'loading {args.init_path}')
+        model.load_state_dict(torch.load(args.init_path))
+
     if args.bottleneck_layers is not None:
+        print(f'creating bottleneck with dims {args.bottleneck_layers}')
         in_dim = model_config['hidden_channels']
         hidden_dims = args.bottleneck_layers
-        model_config['bottleneck'] = Bottleneck(
+        bottleneck = Bottleneck(
             in_dim=in_dim, 
             hidden_dims=hidden_dims[:-1], 
             embedding_dim=hidden_dims[-1], 
         )
-        wandb_name = f'bottleneck{hidden_dims[-1]}'
+        for key in dataloaders['train'].keys():
+            model.readout[key].bottleneck = bottleneck
 
-    model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
-        
-    if args.init_path is not None:    
-        model.load_state_dict(torch.load(args.init_path))
+        wandb_name = f'bottleneck{hidden_dims[-1]}'
 
     trainer_config = {
         'max_iter': 200,
@@ -115,29 +126,39 @@ def main():
         'lr_init': 0.009,
         'device': device, 
         'wandb_project': 'small readout vectors',
-        'wandb_name': wandb_name or 'base model',
+        'wandb_name': wandb_name,
         'topographic_loss_w': args.topo_w, 
         'topographic_loss_k': args.topo_k, 
         'barlow_loss_w': args.barlow_w, 
-        'use_wandb': args.use_wandb, 
+        'use_wandb': use_wandb, 
     }
     trainer_config['wandb_config'] = model_config | trainer_config
 
     if args.finetune_lr_scale is not None:
-        autoenc_params = []
-        finetune_params = []
+        if args.finetune_lr_scale == 0:
+            # finetune_lr = 0 -> Freeze params
+            print('freezing everything excect bottleneck')
+            for name, param in model.named_parameters():
+                if 'bottleneck' not in name:
+                    param.requires_grad = False
+            
+        else:
+            # finetune_lr > 0 -> split params
+            print('split params')
+            bottleneck_params = []
+            finetune_params = []
 
-        for name, param in model.named_parameters():
-            if 'autoencoder' in name:
-                autoenc_params.append(param)
-            else:
-                finetune_params.append(param)
+            for name, param in model.named_parameters():
+                if 'bottleneck' in name:
+                    bottleneck_params.append(param)
+                else:
+                    finetune_params.append(param)
 
-        base_lr = trainer_config['lr_init']
-        trainer_config['optimizer'] = torch.optim.Adam([
-            {'params': autoenc_params, 'lr': base_lr}, 
-            {'params': finetune_params, 'lr': base_lr * args.finetune_lr_scale},
-        ])
+            base_lr = trainer_config['lr_init']
+            trainer_config['optimizer'] = torch.optim.Adam([
+                {'params': bottleneck_params, 'lr': base_lr}, 
+                {'params': finetune_params, 'lr': base_lr * args.finetune_lr_scale},
+            ])
 
     #validation_score, trainer_output, state_dict = trainer(model, dataloaders, seed=42)
     validation_score, trainer_output, state_dict = standard_trainer(

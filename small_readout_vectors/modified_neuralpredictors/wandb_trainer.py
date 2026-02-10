@@ -32,19 +32,32 @@ def avg_weight_divergence(model, dataloaders):
     avg_diff = diffs.mean()
     return avg_diff
 
-def barlow_loss_fn(model, data_key):
+def barlow_loss_fn(model, data_key, scale=True):
+    # scale makes the loss independant of d
+    #feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
+    #feature_emb = feature_emb.transpose(0, 1)
+    #n, b, d = feature_emb.shape
     feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
-    feature_emb = feature_emb.transpose(0, 1)
-    n, b, d = feature_emb.shape
+    b, d, h, w = feature_emb.shape
+    feature_emb = feature_emb.permute(0, 2, 3, 1).flatten(0, 2) # b * h * w, d
+    
+    cov = feature_emb.T @ feature_emb / (b * h * w - 1)
 
-    cov = torch.bmm(
-        feature_emb.transpose(1, 2), 
-        feature_emb
-    ) / (b - 1)  # batched matrix mult (one cov per neuron)
+    #cov = torch.bmm(
+    #    feature_emb.transpose(1, 2), 
+    #    feature_emb
+    #) / (b - 1)  # batched matrix mult (one cov per heigh and width)
 
+    #i, j = torch.tril_indices(d, d, offset=-1)
+    #cov[torch.arange(hw), i, j].pow(2).mean()
     identity = torch.eye(d, device=cov.device)
     barlow_loss = (cov - identity).pow(2).sum()
-    print(cov[0])
+    
+    if scale:
+        barlow_loss = barlow_loss * b / (d * (d - 1)) 
+
+    #print(feature_emb.shape)
+    #print(cov)
 
     return barlow_loss
 
@@ -123,6 +136,7 @@ def standard_trainer(
     barlow_loss_w=None, 
     use_wandb=True,  # Added parameter to control wandb usage
     optimizer=None, 
+    per_neuron=False, 
     **kwargs
 ):
     """
@@ -184,7 +198,9 @@ def standard_trainer(
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)
         
-        poisson_loss = loss_scale * criterion(preds, targets) 
+        poisson_loss = loss_scale * criterion(preds, targets)
+        if per_neuron:
+            poisson_loss = poisson_loss.mean()  # Independant of num of neurons
         
         if topographic_loss_w is not None:
             topographic_loss = topographic_loss_w * topographic_loss_fn(preds.T, model, data_key, k=topographic_loss_k)
@@ -192,6 +208,7 @@ def standard_trainer(
         if barlow_loss_w is not None:
             barlow_loss = barlow_loss_w * barlow_loss_fn(model, data_key)
 
+        #print(poisson_loss, barlow_loss)
         loss = poisson_loss + regularizers + topographic_loss + barlow_loss
         return loss, (poisson_loss, topographic_loss, barlow_loss, regularizers)
     
@@ -200,7 +217,7 @@ def standard_trainer(
     set_random_seed(seed)
     model.train()
 
-    criterion = getattr(modules, loss_function)(avg=avg_loss)
+    criterion = getattr(modules, loss_function)(avg=avg_loss, per_neuron=per_neuron)
 
     stop_closure = partial(
         getattr(scores, stop_function),

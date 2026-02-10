@@ -27,6 +27,7 @@ def get_args():
     parser.add_argument('--finetune_lr_scale', type=float, default=None)
     parser.add_argument('--padding', type=int, default=None)
     parser.add_argument('--batch_size', type=int, default=128)
+    parser.add_argument('--per_neuron', action='store_true', default=False)
     return parser.parse_args()
 
 def main():
@@ -131,6 +132,7 @@ def main():
         'topographic_loss_k': args.topo_k, 
         'barlow_loss_w': args.barlow_w, 
         'use_wandb': use_wandb, 
+        'per_neuron': args.per_neuron, 
     }
     trainer_config['wandb_config'] = model_config | trainer_config
 

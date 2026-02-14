@@ -32,7 +32,7 @@ def avg_weight_divergence(model, dataloaders):
     avg_diff = diffs.mean()
     return avg_diff
 
-def barlow_loss_fn(model, data_key, scale=True):
+def barlow_loss_fn(model, data_key, scale=False):
     # scale makes the loss independant of d
     #feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
     #feature_emb = feature_emb.transpose(0, 1)
@@ -191,9 +191,8 @@ def standard_trainer(
         )
         regularizers = int(
             not detach_core
-        ) * model.core.regularizer() + model.readout.regularizer(data_key) 
+        ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='mean' if per_neuron else 'sum') 
         # Here I removed readout regularization for overcompleteness sanity check
-        
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)

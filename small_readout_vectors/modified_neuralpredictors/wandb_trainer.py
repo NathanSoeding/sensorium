@@ -32,17 +32,20 @@ def avg_weight_divergence(model, dataloaders):
     avg_diff = diffs.mean()
     return avg_diff
 
-def barlow_loss_fn(model, data_key):
+def barlow_loss_fn(feature_embeds):
     # scale makes the loss independant of d
     #feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
     #feature_emb = feature_emb.transpose(0, 1)
     #n, b, d = feature_emb.shape
-    feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
-    if len(feature_emb.shape) == 4:
-        feature_emb = feature_emb.permute(0, 2, 3, 1).flatten(0, 2) # b * h * w, d
-    elif len(feature_emb.shape) == 3:
-        feature_emb = feature_emb.flatten(0, 1)
-    
+    #feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
+
+    # feature_embeds list of elements with (num_imgs, num_neurons, dim)
+
+    if len(feature_embeds[0].shape) == 4:
+        feature_emb = torch.cat([f.permute(0, 2, 3, 1).flatten(0, 2) for f in feature_embeds])  # Flatten across batch and neurons
+    elif len(feature_embeds[0].shape) == 3:
+        feature_emb = torch.cat([f.flatten(0, 1) for f in feature_embeds])  # Flatten across batch and neurons
+        
     n, d = feature_emb.shape
     cov = feature_emb.T @ feature_emb / (feature_emb.shape[0] - 1)
 
@@ -171,6 +174,10 @@ def standard_trainer(
 
     """
     
+    poisson_preds = []
+    poisson_targets = []
+    barlow_embeds = []
+
     # Initialize wandb if specified
     if wandb_project and use_wandb:
         wandb.init(
@@ -180,6 +187,11 @@ def standard_trainer(
         )
 
     def full_objective(model, dataloader, data_key, *args, **kwargs):
+        nonlocal poisson_preds
+        nonlocal poisson_targets
+        nonlocal barlow_embeds
+
+        poisson_loss = torch.zeros(1).to(device)
         topographic_loss = torch.zeros(1).to(device)
         barlow_loss = torch.zeros(1).to(device)
 
@@ -196,7 +208,15 @@ def standard_trainer(
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)
         
-        poisson_loss = loss_scale * criterion(preds, targets)
+        poisson_preds.append(preds)
+        poisson_targets.append(targets)
+
+        if (batch_no + 1) % optim_step_count == 0:
+            for preds, targets in zip(poisson_preds, poisson_targets):
+                poisson_loss += loss_scale * criterion(preds, targets)
+                poisson_preds = []
+                poisson_targets = []
+
         if per_neuron:
             poisson_loss = poisson_loss.mean()  # Independant of num of neurons
         
@@ -204,7 +224,12 @@ def standard_trainer(
             topographic_loss = topographic_loss_w * topographic_loss_fn(preds.T, model, data_key, k=topographic_loss_k)
 
         if barlow_loss_w is not None:
-            barlow_loss = barlow_loss_w * barlow_loss_fn(model, data_key)
+            feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
+            barlow_embeds.append(feature_emb)
+
+            if (batch_no + 1) % optim_step_count == 0:
+                barlow_loss = barlow_loss_w * barlow_loss_fn(barlow_embeds)    
+                barlow_embeds = []
 
         #print(poisson_loss, barlow_loss)
         loss = poisson_loss + regularizers + topographic_loss + barlow_loss

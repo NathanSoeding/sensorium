@@ -32,16 +32,19 @@ def avg_weight_divergence(model, dataloaders):
     avg_diff = diffs.mean()
     return avg_diff
 
-def barlow_loss_fn(model, data_key, scale=False):
+def barlow_loss_fn(model, data_key):
     # scale makes the loss independant of d
     #feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
     #feature_emb = feature_emb.transpose(0, 1)
     #n, b, d = feature_emb.shape
     feature_emb, _ = model.readout[data_key].bottleneck.get_last_embeds()
-    b, d, h, w = feature_emb.shape
-    feature_emb = feature_emb.permute(0, 2, 3, 1).flatten(0, 2) # b * h * w, d
+    if len(feature_emb.shape) == 4:
+        feature_emb = feature_emb.permute(0, 2, 3, 1).flatten(0, 2) # b * h * w, d
+    elif len(feature_emb.shape) == 3:
+        feature_emb = feature_emb.flatten(0, 1)
     
-    cov = feature_emb.T @ feature_emb / (b * h * w - 1)
+    n, d = feature_emb.shape
+    cov = feature_emb.T @ feature_emb / (feature_emb.shape[0] - 1)
 
     #cov = torch.bmm(
     #    feature_emb.transpose(1, 2), 
@@ -53,12 +56,8 @@ def barlow_loss_fn(model, data_key, scale=False):
     identity = torch.eye(d, device=cov.device)
     barlow_loss = (cov - identity).pow(2).sum()
     
-    if scale:
-        barlow_loss = barlow_loss * b / (d * (d - 1)) 
-
     #print(feature_emb.shape)
     #print(cov)
-
     return barlow_loss
 
 def topographic_loss_fn(predictions, model, data_key, std_threshold=0.01, eps=1e-4, k=None):

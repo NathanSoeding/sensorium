@@ -48,7 +48,7 @@ def barlow_loss_fn(feature_embeds):
         
     n, d = feature_emb.shape
     cov = feature_emb.T @ feature_emb / (feature_emb.shape[0] - 1)
-
+    
     #cov = torch.bmm(
     #    feature_emb.transpose(1, 2), 
     #    feature_emb
@@ -137,8 +137,9 @@ def standard_trainer(
     topographic_loss_k=None,
     barlow_loss_w=None, 
     use_wandb=True,  # Added parameter to control wandb usage
-    optimizer=None, 
-    per_neuron=False, 
+    optimizer=None,  
+    regularizer_warmup_start=None,
+    regularizer_warmup_end=None,
     **kwargs
 ):
     """
@@ -186,14 +187,15 @@ def standard_trainer(
             name=wandb_name,
         )
 
-    def full_objective(model, dataloader, data_key, *args, **kwargs):
-        nonlocal poisson_preds
-        nonlocal poisson_targets
-        nonlocal barlow_embeds
+    def full_objective(model, dataloader, data_key, epoch, *args, **kwargs):
+        # nonlocal poisson_preds
+        # nonlocal poisson_targets
+        # nonlocal barlow_embeds
 
         poisson_loss = torch.zeros(1).to(device)
         topographic_loss = torch.zeros(1).to(device)
         barlow_loss = torch.zeros(1).to(device)
+        regularizers_scale = torch.zeros(1)
 
         loss_scale = (
             np.sqrt(len(dataloader[data_key].dataset) / args[0].shape[0])
@@ -202,23 +204,22 @@ def standard_trainer(
         )
         regularizers = int(
             not detach_core
-        ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='mean' if per_neuron else 'sum') 
+        ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='sum') 
         # Here I removed readout regularization for overcompleteness sanity check
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)
         
-        poisson_preds.append(preds)
-        poisson_targets.append(targets)
+        # poisson_preds.append(preds)
+        # poisson_targets.append(targets)
 
-        if (batch_no + 1) % optim_step_count == 0:
-            for preds, targets in zip(poisson_preds, poisson_targets):
-                poisson_loss += loss_scale * criterion(preds, targets)
-                poisson_preds = []
-                poisson_targets = []
+        # if (batch_no + 1) % optim_step_count == 0:
+        #     for preds, targets in zip(poisson_preds, poisson_targets):
+        #         poisson_loss += loss_scale * criterion(preds, targets)
+        #         poisson_preds = []
+        #         poisson_targets = []
 
-        if per_neuron:
-            poisson_loss = poisson_loss.mean()  # Independant of num of neurons
+        poisson_loss = loss_scale * criterion(preds, targets)
         
         if topographic_loss_w is not None:
             topographic_loss = topographic_loss_w * topographic_loss_fn(preds.T, model, data_key, k=topographic_loss_k)
@@ -232,15 +233,28 @@ def standard_trainer(
                 barlow_embeds = []
 
         #print(poisson_loss, barlow_loss)
-        loss = poisson_loss + regularizers + topographic_loss + barlow_loss
-        return loss, (poisson_loss, topographic_loss, barlow_loss, regularizers)
+        if regularizer_warmup_start is not None and regularizer_warmup_end is not None:
+            if epoch < regularizer_warmup_start:
+                regularizers_scale = 0
+            elif epoch > regularizer_warmup_end:
+                regularizers_scale = 1
+            else:
+                progress = (epoch - regularizer_warmup_start) / (regularizer_warmup_end - regularizer_warmup_start)
+                regularizers_scale = (1 + torch.cos((torch.tensor(progress) + 1) * torch.pi)) / 2
+            
+            warmed_regularizers = regularizers * regularizers_scale
+            loss = poisson_loss + warmed_regularizers + topographic_loss + barlow_loss
+        else:
+            loss = poisson_loss + regularizers + topographic_loss + barlow_loss
+
+        return loss, (poisson_loss, topographic_loss, barlow_loss, regularizers, regularizers_scale)
     
     ##### Model training ####################################################################################################
     model.to(device)
     set_random_seed(seed)
     model.train()
 
-    criterion = getattr(modules, loss_function)(avg=avg_loss, per_neuron=per_neuron)
+    criterion = getattr(modules, loss_function)(avg=avg_loss)
 
     stop_closure = partial(
         getattr(scores, stop_function),
@@ -343,12 +357,13 @@ def standard_trainer(
                 model,
                 dataloaders["train"],
                 data_key,
+                epoch,
                 *batch_args,
                 **batch_kwargs,
                 detach_core=detach_core
             )
             
-            poisson_loss, topographic_loss, barlow_loss, regularizers = loss_components
+            poisson_loss, topographic_loss, barlow_loss, regularizers, regularizers_scale = loss_components
             
             loss.backward()
             
@@ -386,11 +401,18 @@ def standard_trainer(
                 wandb_dict = {
                     "Epoch Train loss poisson": epoch_loss_main,
                     "Epoch Train loss regularizers": epoch_loss_reg,
-                    "Epoch Train loss topographic": epoch_loss_topographic / topographic_loss_w if topographic_loss_w is not None else 0,
-                    "Epoch Train loss ratio": epoch_loss_main / epoch_loss_topographic if topographic_loss_w is not None else 0, 
-                    "Epoch Train loss barlow": epoch_loss_barlow, 
+                    # "Epoch Train loss topographic": epoch_loss_topographic / topographic_loss_w if topographic_loss_w is not None else 0,
+                    # "Epoch Train loss ratio": epoch_loss_main / epoch_loss_topographic if topographic_loss_w is not None else 0, 
+                    # "Epoch Train loss barlow": epoch_loss_barlow, 
+                    "Regularizers Scale": regularizers_scale,
+                    "n": model.readout[data_key].whitener.cov_ema,
                     "Learning Rate": optimizer.param_groups[0]['lr'],
                 }
+
+                whitener = model.readout[list(dataloaders['train'].keys())[0]].whitener
+                if whitener is not None:
+                    ema_cond = torch.linalg.cond(whitener.cov_ema)
+                    wandb_dict["Cov EMA condition"] = ema_cond
             
             if verbose:
                 print("=======================================")

@@ -9,7 +9,9 @@ from modified_neuralpredictors.create_model import stacked_core_full_gauss_reado
 from modified_neuralpredictors.wandb_trainer import standard_trainer
 from models.bottleneck import Bottleneck
 
-def get_args():
+from models.whitener import Whitener
+
+def get_parser():
     parser = argparse.ArgumentParser(description="PyTorch Training Script")
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--device', type=str, default='cuda:7')
@@ -20,18 +22,30 @@ def get_args():
     parser.add_argument('--topo_w', type=float, default=None)
     parser.add_argument('--final_nonlin', action='store_false', default=True)
     parser.add_argument('--no_wandb', action='store_true', default=False)
+    parser.add_argument('--wandb_run_name', type=str, default='run')
     parser.add_argument('--topo_k', type=int, default=None)
     parser.add_argument('--init_path', type=str, default=None)
     parser.add_argument('--bottleneck_layers', type=int, nargs='+', default=None)
     parser.add_argument('--barlow_w', type=float, default=None)
     parser.add_argument('--finetune_lr_scale', type=float, default=None)
-    parser.add_argument('--padding', type=int, default=None)
+    parser.add_argument('--padding', type=str, default=None)
     parser.add_argument('--batch_size', type=int, default=128)
-    parser.add_argument('--per_neuron', action='store_true', default=False)
-    return parser.parse_args()
+    parser.add_argument('--two_mlps', action='store_true', default=False)
+    parser.add_argument('--identity', action='store_true', default=False)
+    parser.add_argument('--exclude_behaviour', action='store_true', default=False)
+    parser.add_argument('--sample_first', action='store_true', default=False)
+    parser.add_argument('--whitener', action='store_true', default=False)
+    parser.add_argument('--whitener_ema_decay', type=float, default=None)
+    parser.add_argument('--reg_type', type=str, default="adaptive_log_norm")
+    parser.add_argument('--lp_p', type=float, default=0.5)
+    parser.add_argument('--lp_eps', type=float, default=1e-3)
+    parser.add_argument('--reg_start', type=int, default=None)
+    parser.add_argument('--reg_end', type=int, default=None)
+    return parser
 
 def main():
-    args = get_args()
+    parser = get_parser()
+    args = parser.parse_args()
     print(args)
 
     random_seed = args.seed
@@ -41,7 +55,6 @@ def main():
     device = args.device
     torch.cuda.set_device(device)
 
-    wandb_name = 'base model'
     use_wandb = not args.no_wandb
 
     basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
@@ -55,7 +68,7 @@ def main():
     dataset_config = {
         "paths": filenames,
         "normalize": True,
-        "include_behavior": True,
+        "include_behavior": not args.exclude_behaviour,
         "include_eye_position": True,
         "batch_size": args.batch_size,
         "scale": 0.25,
@@ -95,11 +108,19 @@ def main():
         'shifter': True,
         'batch_norm_scale': [True, True, True, False],
         'core_bias': [True, True, True, False],
-        'regularizer_type': "adaptive_log_norm",
+        'regularizer_type': args.reg_type,
         'gamma_sigma': args.gamma_sigma,
+        'lp_p': args.lp_p,
+        'lp_eps': args.lp_eps,
     }
 
+    if args.whitener:
+        model_config['whitener'] = Whitener(model_config['hidden_channels'], args.whitener_ema_decay)
+        #model_config['batch_norm_scale'] = True
+        #model_config['core_bias'] = True
+
     model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
+    print(model)
         
     if args.init_path is not None:
         print(f'loading {args.init_path}')
@@ -113,11 +134,13 @@ def main():
             in_dim=in_dim, 
             hidden_dims=hidden_dims[:-1], 
             embedding_dim=hidden_dims[-1], 
+            weight_sharing=not args.two_mlps, 
+            identity=args.identity,
+            sample_first=args.sample_first,
         )
+        print(bottleneck)
         for key in dataloaders['train'].keys():
             model.readout[key].bottleneck = bottleneck
-
-        wandb_name = f'bottleneck{hidden_dims[-1]}'
 
     trainer_config = {
         'max_iter': 200,
@@ -127,12 +150,13 @@ def main():
         'lr_init': 0.009,
         'device': device, 
         'wandb_project': 'small readout vectors',
-        'wandb_name': wandb_name,
+        'wandb_name': args.wandb_run_name,
         'topographic_loss_w': args.topo_w, 
         'topographic_loss_k': args.topo_k, 
         'barlow_loss_w': args.barlow_w, 
         'use_wandb': use_wandb, 
-        'per_neuron': args.per_neuron, 
+        'regularizer_warmup_start': args.reg_start,
+        'regularizer_warmup_end': args.reg_end,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
 

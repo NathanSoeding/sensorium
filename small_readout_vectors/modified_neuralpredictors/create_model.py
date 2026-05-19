@@ -57,6 +57,9 @@ def stacked_core_full_gauss_readout(
     gamma_sigma=0.25,
     autoencoder=None, 
     bottleneck=None, 
+    whitener=None,
+    lp_p=0.5,
+    lp_eps=1e-3,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -150,8 +153,11 @@ def stacked_core_full_gauss_readout(
         feature_reg_weight=feature_reg_weight,
         regularizer_type=regularizer_type,
         gamma_sigma=gamma_sigma,
+        lp_p=lp_p,
+        lp_eps=lp_eps,
         autoencoder=autoencoder, 
         bottleneck=bottleneck, 
+        whitener=whitener,
     )
 
     if shifter is True:

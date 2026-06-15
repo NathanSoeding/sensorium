@@ -13,6 +13,16 @@ from neuralpredictors.layers.cores import (
 from sensorium.models.readouts import MultipleFullGaussian2d
 from sensorium.models.utility import prepare_grid
 
+from neuralpredictors.layers.readouts import (
+    MultiReadoutSharedParametersBase,
+    FullGaussian2d,
+    FullFactorized2d,
+)
+from sensorium.models.readouts import MultipleFullGaussian2d
+
+class MultipleFullFactorized2d(MultiReadoutSharedParametersBase):
+    _base_readout = FullFactorized2d
+
 
 def stacked_core_full_gauss_readout(
     dataloaders,
@@ -60,6 +70,14 @@ def stacked_core_full_gauss_readout(
     whitener=None,
     lp_p=0.5,
     lp_eps=1e-3,
+    readout_type='gaussian',
+    spatial_reg_weight=0,
+    temperature=1,
+    factorize_spatial=False,
+    shift_noise_scale=None,
+    retinotopy_spatial=None,
+    retinotopy_fourier=False,
+    fourier_max_freq=4,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -85,6 +103,9 @@ def stacked_core_full_gauss_readout(
 
     Returns: An initialized model which consists of model.core and model.readout
     """
+    # if readout_type == 'factorized':
+    #     shifter = None
+    #     print('disabling shifter to use factorized')
 
     if "train" in dataloaders.keys():
         dataloaders = dataloaders["train"]
@@ -139,26 +160,50 @@ def stacked_core_full_gauss_readout(
         for k, v in session_shape_dict.items()
     }
 
-    readout = MultipleFullGaussian2d(
-        in_shape_dict=in_shapes_dict,
-        loader=dataloaders,
-        n_neurons_dict=n_neurons_dict,
-        init_mu_range=init_mu_range,
-        bias=readout_bias,
-        init_sigma=init_sigma,
-        gauss_type=gauss_type,
-        grid_mean_predictor=grid_mean_predictor,
-        grid_mean_predictor_type=grid_mean_predictor_type,
-        source_grids=source_grids,
-        feature_reg_weight=feature_reg_weight,
-        regularizer_type=regularizer_type,
-        gamma_sigma=gamma_sigma,
-        lp_p=lp_p,
-        lp_eps=lp_eps,
-        autoencoder=autoencoder, 
-        bottleneck=bottleneck, 
-        whitener=whitener,
-    )
+    if readout_type == 'gaussian':
+        readout = MultipleFullGaussian2d(
+            in_shape_dict=in_shapes_dict,
+            n_neurons_dict=n_neurons_dict,
+            loader=dataloaders,
+            init_mu_range=init_mu_range,
+            bias=readout_bias,
+            init_sigma=init_sigma,
+            gauss_type=gauss_type,
+            grid_mean_predictor=grid_mean_predictor,
+            grid_mean_predictor_type=grid_mean_predictor_type,
+            source_grids=source_grids,
+            feature_reg_weight=feature_reg_weight,
+            regularizer_type=regularizer_type,
+            gamma_sigma=gamma_sigma,
+            lp_p=lp_p,
+            lp_eps=lp_eps,
+            autoencoder=autoencoder, 
+            bottleneck=bottleneck, 
+            whitener=whitener,
+        )
+    elif readout_type == 'factorized':
+        readout = MultipleFullFactorized2d(
+            in_shape_dict=in_shapes_dict,
+            loader=dataloaders,
+            n_neurons_dict=n_neurons_dict,
+            bias=readout_bias,
+            feature_reg_weight=feature_reg_weight,   
+            spatial_reg_weight=spatial_reg_weight,
+            temperature=temperature,
+            factorize_spatial=factorize_spatial,
+            regularizer_type=regularizer_type,
+            gamma_sigma=gamma_sigma,
+            whitener=whitener,
+            shift_noise_scale=shift_noise_scale,
+            source_grids=source_grids,
+            grid_mean_predictor=grid_mean_predictor,
+            grid_mean_predictor_type=grid_mean_predictor_type,
+            retinotopy_spatial=retinotopy_spatial,
+            retinotopy_fourier=retinotopy_fourier,
+            fourier_max_freq=fourier_max_freq,
+        )
+    else:
+        raise(NotImplementedError)
 
     if shifter is True:
         data_keys = [i for i in dataloaders.keys()]

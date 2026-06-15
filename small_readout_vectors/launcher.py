@@ -4,9 +4,14 @@ import sys
 import os
 import argparse
 
-def create_run(base_path, name, extra_args):
+def create_run(base_path, name, extra_args, overwrite=False):
     # Setup directories
     path = os.path.join(base_path, name)
+
+    if os.path.exists(path) and not overwrite:
+        print(f"Error: run directory '{path}' already exists. Use --overwrite to overwrite it.")
+        sys.exit(1)
+
     os.makedirs(path, exist_ok=True)
 
     
@@ -30,11 +35,13 @@ def create_run(base_path, name, extra_args):
     # Save PID
     with open(f"{path}/pid.txt", "w") as f:
         f.write(str(process.pid))
+        f.write(str(cmd))
     
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", type=str, required=True)
     parser.add_argument("--name", type=str, required=True)
     
+    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing run directory")
     args, unknown = parser.parse_known_args()
-    create_run(args.path, args.name, unknown)
+    create_run(args.path, args.name, unknown, overwrite=args.overwrite)

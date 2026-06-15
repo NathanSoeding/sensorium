@@ -140,6 +140,7 @@ def standard_trainer(
     optimizer=None,  
     regularizer_warmup_start=None,
     regularizer_warmup_end=None,
+    adamw_reg=1e-2,
     **kwargs
 ):
     """
@@ -266,7 +267,10 @@ def standard_trainer(
 
     n_iterations = len(LongCycler(dataloaders["train"]))
 
-    if optimizer is None:
+    if optimizer == 'adamw':
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr_init, weight_decay=adamw_reg)
+        print(f'using adamw with weight decay={adamw_reg}')
+    if optimizer is None or optimizer == 'adam':
         optimizer = torch.optim.Adam(model.parameters(), lr=lr_init)
     
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -396,7 +400,7 @@ def standard_trainer(
 
         # Print and log metrics after each epoch
         if tracker is not None:
-            model.eval()
+
             if wandb_project and use_wandb:
                 wandb_dict = {
                     "Epoch Train loss poisson": epoch_loss_main,
@@ -405,14 +409,13 @@ def standard_trainer(
                     # "Epoch Train loss ratio": epoch_loss_main / epoch_loss_topographic if topographic_loss_w is not None else 0, 
                     # "Epoch Train loss barlow": epoch_loss_barlow, 
                     "Regularizers Scale": regularizers_scale,
-                    "n": model.readout[data_key].whitener.cov_ema,
                     "Learning Rate": optimizer.param_groups[0]['lr'],
                 }
 
-                whitener = model.readout[list(dataloaders['train'].keys())[0]].whitener
-                if whitener is not None:
-                    ema_cond = torch.linalg.cond(whitener.cov_ema)
-                    wandb_dict["Cov EMA condition"] = ema_cond
+                # whitener = model.readout[list(dataloaders['train'].keys())[0]].whitener
+                # if whitener is not None:
+                #     ema_cond = torch.linalg.cond(whitener.cov_ema)
+                #     wandb_dict["Cov EMA condition"] = ema_cond
             
             if verbose:
                 print("=======================================")
@@ -436,7 +439,6 @@ def standard_trainer(
                 wandb.log(wandb_dict, step=epoch)
 
     ##### Model evaluation ####################################################################################################
-    model.eval()
     if tracker is not None:
         tracker.finalize() if track_training else None
 

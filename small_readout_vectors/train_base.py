@@ -25,6 +25,7 @@ def get_parser():
     parser.add_argument('--wandb_run_name', type=str, default='run')
     parser.add_argument('--topo_k', type=int, default=None)
     parser.add_argument('--init_path', type=str, default=None)
+    parser.add_argument('--only_load', type=str, nargs='+', default=None)
     parser.add_argument('--bottleneck_layers', type=int, nargs='+', default=None)
     parser.add_argument('--barlow_w', type=float, default=None)
     parser.add_argument('--finetune_lr_scale', type=float, default=None)
@@ -41,6 +42,22 @@ def get_parser():
     parser.add_argument('--lp_eps', type=float, default=1e-3)
     parser.add_argument('--reg_start', type=int, default=None)
     parser.add_argument('--reg_end', type=int, default=None)
+    parser.add_argument('--freeze_core', action='store_true', default=False)
+    parser.add_argument('--freeze_shifter', action='store_true', default=False)
+    parser.add_argument('--readout_type', type=str, default='gaussian')
+    parser.add_argument('--optimizer', type=str, default=None)
+    parser.add_argument('--adamw_reg', type=float, default=1e-2)
+    parser.add_argument('--spatial_reg_weight', type=float, default=0.0)
+    parser.add_argument('--temperature', type=float, default=1.0)
+    parser.add_argument('--factorize_spatial', action='store_true', default=False)
+    parser.add_argument('--shift_noise_scale', type=float, default=None)
+    parser.add_argument('--retinotopy', action='store_true', default=False)
+    parser.add_argument('--retinotopy_d', type=int, default=30)
+    parser.add_argument('--retinotopy_layers', type=int, default=1)
+    parser.add_argument('--max_freq', type=int, default=None)
+    parser.add_argument('--input_kern', type=int, default=11)
+    parser.add_argument('--fourier', action='store_true', default=False)
+
     return parser
 
 def main():
@@ -88,7 +105,7 @@ def main():
         'hidden_padding': args.padding, 
         'stack': -1,
         'layers': 4,
-        'input_kern': 11, #  original sensorium was 'input_kern': 9,
+        'input_kern': args.input_kern, #  original sensorium was 'input_kern': 9,
         'gamma_input': 6.3831, # this should not influence the performance based on previous experience
         
         'feature_reg_weight': args.feature_reg_weight, # this is the one I actually would like to tune!
@@ -112,7 +129,20 @@ def main():
         'gamma_sigma': args.gamma_sigma,
         'lp_p': args.lp_p,
         'lp_eps': args.lp_eps,
+        'readout_type': args.readout_type,
+        'spatial_reg_weight': args.spatial_reg_weight,
+        'temperature': args.temperature,
+        'factorize_spatial': args.factorize_spatial,
+        'shift_noise_scale': args.shift_noise_scale,
+        'retinotopy_fourier': args.fourier,
+        'fourier_max_freq': args.max_freq,
     }
+
+    if args.retinotopy:
+        model_config['retinotopy_spatial'] = {
+            'hidden_features': args.retinotopy_d,
+            'hidden_layers': args.retinotopy_layers,
+        }
 
     if args.whitener:
         model_config['whitener'] = Whitener(model_config['hidden_channels'], args.whitener_ema_decay)
@@ -123,8 +153,22 @@ def main():
     print(model)
         
     if args.init_path is not None:
-        print(f'loading {args.init_path}')
-        model.load_state_dict(torch.load(args.init_path))
+        if args.only_load is None:
+            print(f'loading {args.init_path}')
+            model.load_state_dict(torch.load(args.init_path, map_location=device))
+        else:
+            print(f'loading {args.only_load} from {args.init_path}')
+            ckpt = torch.load(args.init_path, map_location=device)
+            model_dict = model.state_dict()
+            
+            # Keep only matching keys (and optionally matching shapes)
+            filtered_ckpt = {
+                k: v
+                for k, v in ckpt.items()
+                if any(s in k for s in args.only_load)
+            }
+            model_dict.update(filtered_ckpt)
+            model.load_state_dict(model_dict)
 
     if args.bottleneck_layers is not None:
         print(f'creating bottleneck with dims {args.bottleneck_layers}')
@@ -157,6 +201,8 @@ def main():
         'use_wandb': use_wandb, 
         'regularizer_warmup_start': args.reg_start,
         'regularizer_warmup_end': args.reg_end,
+        'optimizer': args.optimizer,
+        'adamw_reg': args.adamw_reg,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
 
@@ -185,6 +231,19 @@ def main():
                 {'params': bottleneck_params, 'lr': base_lr}, 
                 {'params': finetune_params, 'lr': base_lr * args.finetune_lr_scale},
             ])
+
+    if args.freeze_core:
+        print('freezing core')
+        for name, param in model.named_parameters():
+            if 'core' in name:
+                print(f'freezing {name}')
+                param.requires_grad = False
+    if args.freeze_shifter:
+        print('freezing shifter')
+        for name, param in model.named_parameters():
+            if 'shifter' in name:
+                print(f'freezing {name}')
+                param.requires_grad = False
 
     #validation_score, trainer_output, state_dict = trainer(model, dataloaders, seed=42)
     validation_score, trainer_output, state_dict = standard_trainer(

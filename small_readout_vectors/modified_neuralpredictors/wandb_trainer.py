@@ -141,6 +141,9 @@ def standard_trainer(
     regularizer_warmup_start=None,
     regularizer_warmup_end=None,
     adamw_reg=1e-2,
+    init_temp=1.0,
+    min_temp=None,
+    temp_decay_t=None,
     **kwargs
 ):
     """
@@ -198,6 +201,12 @@ def standard_trainer(
         barlow_loss = torch.zeros(1).to(device)
         regularizers_scale = torch.zeros(1)
 
+        if min_temp is not None and temp_decay_t is not None:
+            progress = min(epoch / temp_decay_t, 1)
+            temp = init_temp - progress * (init_temp - min_temp)
+        else:
+            temp = init_temp
+
         loss_scale = (
             np.sqrt(len(dataloader[data_key].dataset) / args[0].shape[0])
             if scale_loss
@@ -208,7 +217,7 @@ def standard_trainer(
         ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='sum') 
         # Here I removed readout regularization for overcompleteness sanity check
         imgs = args[0].to(device)
-        preds = model(imgs, data_key=data_key, **kwargs)
+        preds = model(imgs, data_key=data_key, temp=temp, **kwargs)
         targets = args[1].to(device)
         
         # poisson_preds.append(preds)
@@ -248,7 +257,7 @@ def standard_trainer(
         else:
             loss = poisson_loss + regularizers + topographic_loss + barlow_loss
 
-        return loss, (poisson_loss, topographic_loss, barlow_loss, regularizers, regularizers_scale)
+        return loss, (poisson_loss, topographic_loss, barlow_loss, regularizers, regularizers_scale, temp)
     
     ##### Model training ####################################################################################################
     model.to(device)
@@ -339,7 +348,7 @@ def standard_trainer(
         scheduler=scheduler,
         lr_decay_steps=lr_decay_steps,
     ):
-
+        model.train()
         # Reset epoch loss accumulators
         epoch_loss_main = 0.0
         epoch_loss_topographic = 0.0
@@ -367,7 +376,7 @@ def standard_trainer(
                 detach_core=detach_core
             )
             
-            poisson_loss, topographic_loss, barlow_loss, regularizers, regularizers_scale = loss_components
+            poisson_loss, topographic_loss, barlow_loss, regularizers, regularizers_scale, temp = loss_components
             
             loss.backward()
             
@@ -385,7 +394,7 @@ def standard_trainer(
                 optimizer.zero_grad()
             
             batch_no_tot += 1
-
+        
         # Calculate average epoch losses
         if batch_count > 0:
             epoch_loss_total /= batch_count
@@ -398,9 +407,10 @@ def standard_trainer(
         if cb is not None:
             cb()
 
+        model.eval()
+        model.core.train()
         # Print and log metrics after each epoch
         if tracker is not None:
-
             if wandb_project and use_wandb:
                 wandb_dict = {
                     "Epoch Train loss poisson": epoch_loss_main,
@@ -409,6 +419,7 @@ def standard_trainer(
                     # "Epoch Train loss ratio": epoch_loss_main / epoch_loss_topographic if topographic_loss_w is not None else 0, 
                     # "Epoch Train loss barlow": epoch_loss_barlow, 
                     "Regularizers Scale": regularizers_scale,
+                    "Temperature": temp,
                     "Learning Rate": optimizer.param_groups[0]['lr'],
                 }
 
@@ -439,6 +450,8 @@ def standard_trainer(
                 wandb.log(wandb_dict, step=epoch)
 
     ##### Model evaluation ####################################################################################################
+    model.eval()
+    model.core.train()
     if tracker is not None:
         tracker.finalize() if track_training else None
 

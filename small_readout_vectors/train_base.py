@@ -36,7 +36,7 @@ def get_parser():
     parser.add_argument('--exclude_behaviour', action='store_true', default=False)
     parser.add_argument('--sample_first', action='store_true', default=False)
     parser.add_argument('--whitener', action='store_true', default=False)
-    parser.add_argument('--whitener_ema_decay', type=float, default=None)
+    parser.add_argument('--whitener_ema_decay', type=float, default=0.003)
     parser.add_argument('--reg_type', type=str, default="adaptive_log_norm")
     parser.add_argument('--lp_p', type=float, default=0.5)
     parser.add_argument('--lp_eps', type=float, default=1e-3)
@@ -44,19 +44,34 @@ def get_parser():
     parser.add_argument('--reg_end', type=int, default=None)
     parser.add_argument('--freeze_core', action='store_true', default=False)
     parser.add_argument('--freeze_shifter', action='store_true', default=False)
+    parser.add_argument('--freeze_spatial', action='store_true', default=False)
     parser.add_argument('--readout_type', type=str, default='gaussian')
     parser.add_argument('--optimizer', type=str, default=None)
     parser.add_argument('--adamw_reg', type=float, default=1e-2)
     parser.add_argument('--spatial_reg_weight', type=float, default=0.0)
-    parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--factorize_spatial', action='store_true', default=False)
     parser.add_argument('--shift_noise_scale', type=float, default=None)
     parser.add_argument('--retinotopy', action='store_true', default=False)
     parser.add_argument('--retinotopy_d', type=int, default=30)
-    parser.add_argument('--retinotopy_layers', type=int, default=1)
-    parser.add_argument('--max_freq', type=int, default=None)
+    parser.add_argument('--retinotopy_layers', type=int, default=0)
+    parser.add_argument('--max_freq', type=int, default=4)
     parser.add_argument('--input_kern', type=int, default=11)
     parser.add_argument('--fourier', action='store_true', default=False)
+    parser.add_argument('--hard', action='store_true', default=False)
+    parser.add_argument('--temp', type=float, default=1.0)
+    parser.add_argument('--min_temp', type=float, default=None)
+    parser.add_argument('--temp_decay_t', type=int, default=None)
+    parser.add_argument('--normalize_logits', action='store_true', default=False)
+    parser.add_argument('--retinotopy_shifter', action='store_true', default=False)
+    parser.add_argument('--perspective', action='store_true', default=False)
+    parser.add_argument('--retina_degree', type=int, default=75)
+    parser.add_argument('--retina_mlp_features', type=int, default=16)
+    parser.add_argument('--retina_mlp_layers', type=int, default=3)
+    parser.add_argument('--entropy_reg', action='store_true', default=False)
+    parser.add_argument('--entropy_reg_weight', type=float, default=1.0)
+    parser.add_argument('--no_shifter', action='store_true', default=False)
+    parser.add_argument('--stochastic', action='store_true', default=False)
+    parser.add_argument('--init_noise', type=float, default=1.0)
 
     return parser
 
@@ -86,7 +101,7 @@ def main():
         "paths": filenames,
         "normalize": True,
         "include_behavior": not args.exclude_behaviour,
-        "include_eye_position": True,
+        "include_eye_position": not args.no_shifter,
         "batch_size": args.batch_size,
         "scale": 0.25,
     }
@@ -122,7 +137,7 @@ def main():
         'init_sigma': 0.1,
         'init_mu_range': 0.3,
         'gauss_type': 'full',
-        'shifter': True,
+        'shifter': not (args.retinotopy_shifter or args.perspective or args.no_shifter),
         'batch_norm_scale': [True, True, True, False],
         'core_bias': [True, True, True, False],
         'regularizer_type': args.reg_type,
@@ -131,11 +146,21 @@ def main():
         'lp_eps': args.lp_eps,
         'readout_type': args.readout_type,
         'spatial_reg_weight': args.spatial_reg_weight,
-        'temperature': args.temperature,
         'factorize_spatial': args.factorize_spatial,
         'shift_noise_scale': args.shift_noise_scale,
         'retinotopy_fourier': args.fourier,
         'fourier_max_freq': args.max_freq,
+        'init_temp': args.temp,
+        'hard': args.hard,
+        'normalize_logits': args.normalize_logits,
+        'perspective': args.perspective,
+        'retina_degree': args.retina_degree,
+        'retina_mlp_features': args.retina_mlp_features,
+        'retina_mlp_layers': args.retina_mlp_layers,
+        'entropy_reg': args.entropy_reg,
+        'entropy_reg_weight': args.entropy_reg_weight,
+        'stochastic': args.stochastic,
+        'init_noise': args.init_noise,
     }
 
     if args.retinotopy:
@@ -143,6 +168,8 @@ def main():
             'hidden_features': args.retinotopy_d,
             'hidden_layers': args.retinotopy_layers,
         }
+    if args.retinotopy_shifter:
+        model_config['retinotopy_spatial']['in_dim'] = 4
 
     if args.whitener:
         model_config['whitener'] = Whitener(model_config['hidden_channels'], args.whitener_ema_decay)
@@ -203,6 +230,9 @@ def main():
         'regularizer_warmup_end': args.reg_end,
         'optimizer': args.optimizer,
         'adamw_reg': args.adamw_reg,
+        'init_temp': args.temp, 
+        'min_temp': args.min_temp,
+        'temp_decay_t': args.temp_decay_t,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
 
@@ -242,6 +272,12 @@ def main():
         print('freezing shifter')
         for name, param in model.named_parameters():
             if 'shifter' in name:
+                print(f'freezing {name}')
+                param.requires_grad = False
+    if args.freeze_spatial:
+        print('freezing spatial')
+        for name, param in model.named_parameters():
+            if 'spatial' in name:
                 print(f'freezing {name}')
                 param.requires_grad = False
 

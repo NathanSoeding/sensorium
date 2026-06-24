@@ -19,6 +19,7 @@ from neuralpredictors.layers.readouts import (
     FullFactorized2d,
 )
 from sensorium.models.readouts import MultipleFullGaussian2d
+from neuralpredictors.layers.perspective.mlp import Perspective
 
 class MultipleFullFactorized2d(MultiReadoutSharedParametersBase):
     _base_readout = FullFactorized2d
@@ -72,12 +73,22 @@ def stacked_core_full_gauss_readout(
     lp_eps=1e-3,
     readout_type='gaussian',
     spatial_reg_weight=0,
-    temperature=1,
     factorize_spatial=False,
     shift_noise_scale=None,
     retinotopy_spatial=None,
     retinotopy_fourier=False,
     fourier_max_freq=4,
+    init_temp=1.0,
+    hard=False,
+    normalize_logits=False,
+    perspective=None,
+    retina_degree=75, 
+    retina_mlp_features=16,
+    retina_mlp_layers=3,
+    entropy_reg=False,
+    entropy_reg_weight=1.0,
+    stochastic=False, 
+    init_noise=1.0,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -103,6 +114,7 @@ def stacked_core_full_gauss_readout(
 
     Returns: An initialized model which consists of model.core and model.readout
     """
+    assert not (perspective and shifter)
     # if readout_type == 'factorized':
     #     shifter = None
     #     print('disabling shifter to use factorized')
@@ -189,7 +201,6 @@ def stacked_core_full_gauss_readout(
             bias=readout_bias,
             feature_reg_weight=feature_reg_weight,   
             spatial_reg_weight=spatial_reg_weight,
-            temperature=temperature,
             factorize_spatial=factorize_spatial,
             regularizer_type=regularizer_type,
             gamma_sigma=gamma_sigma,
@@ -201,6 +212,11 @@ def stacked_core_full_gauss_readout(
             retinotopy_spatial=retinotopy_spatial,
             retinotopy_fourier=retinotopy_fourier,
             fourier_max_freq=fourier_max_freq,
+            init_temp=init_temp,
+            hard=hard,
+            normalize_logits=normalize_logits,
+            entropy_reg=entropy_reg,
+            entropy_reg_weight=entropy_reg_weight,
         )
     else:
         raise(NotImplementedError)
@@ -214,6 +230,8 @@ def stacked_core_full_gauss_readout(
                 hidden_channels_shifter=hidden_channels_shifter,
                 shift_layers=shift_layers,
                 gamma_shifter=gamma_shifter,
+                stochastic=stochastic, 
+                init_noise=init_noise,
             )
 
         elif shifter_type == "StaticAffine":
@@ -224,10 +242,20 @@ def stacked_core_full_gauss_readout(
                 gamma_shifter=gamma_shifter,
             )
 
+    if perspective is True:
+        data_keys = [i for i in dataloaders.keys()]
+        perspective = Perspective(
+            data_keys, 
+            retina_degree=retina_degree, 
+            mlp_features=retina_mlp_features, 
+            mlp_layers=retina_mlp_layers,
+        )
+
     model = FiringRateEncoder(
         core=core,
         readout=readout,
         shifter=shifter,
+        perspective=perspective,
         elu_offset=elu_offset,
     )
 

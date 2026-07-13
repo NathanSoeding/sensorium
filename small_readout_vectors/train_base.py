@@ -70,8 +70,21 @@ def get_parser():
     parser.add_argument('--entropy_reg', action='store_true', default=False)
     parser.add_argument('--entropy_reg_weight', type=float, default=1.0)
     parser.add_argument('--no_shifter', action='store_true', default=False)
-    parser.add_argument('--stochastic', action='store_true', default=False)
-    parser.add_argument('--init_noise', type=float, default=1.0)
+    parser.add_argument('--no_shift_bias', action='store_true', default=False)
+    parser.add_argument('--shifter_features', type=int, default=5)
+    parser.add_argument('--shifter_layers', type=int, default=3)
+    parser.add_argument('--gamma_shifter', type=float, default=0.0)
+    parser.add_argument('--no_diag', action='store_true', default=False)
+    parser.add_argument('--com_reg_weight', type=float, default=0.0)
+    parser.add_argument('--gaussian', action='store_true', default=False)
+    parser.add_argument('--predict_sigma', action='store_true', default=False)
+    parser.add_argument('--init_sigma', type=float, default=1.0)
+    parser.add_argument('--cp_every_epoch', action='store_true', default=False)
+    parser.add_argument('--cp_path', type=str, default=None)
+    parser.add_argument('--discretized', action='store_true', default=False)
+    parser.add_argument('--kernel_size', type=int, default=7)
+    parser.add_argument('--sigma', type=float, default=2.0)
+    parser.add_argument('--init_gain', type=float, default=1.0)
 
     return parser
 
@@ -148,7 +161,7 @@ def main():
         'spatial_reg_weight': args.spatial_reg_weight,
         'factorize_spatial': args.factorize_spatial,
         'shift_noise_scale': args.shift_noise_scale,
-        'retinotopy_fourier': args.fourier,
+        'fourier_spatial': args.fourier,
         'fourier_max_freq': args.max_freq,
         'init_temp': args.temp,
         'hard': args.hard,
@@ -159,8 +172,19 @@ def main():
         'retina_mlp_layers': args.retina_mlp_layers,
         'entropy_reg': args.entropy_reg,
         'entropy_reg_weight': args.entropy_reg_weight,
-        'stochastic': args.stochastic,
-        'init_noise': args.init_noise,
+        'shifter_bias': not args.no_shift_bias,
+        'hidden_channels_shifter': args.shifter_features,
+        'shift_layers': args.shifter_layers,
+        'gamma_shifter': args.gamma_shifter,
+        'diagonal': not args.no_diag,
+        'com_reg_weight': args.com_reg_weight,
+        'gaussian_spatial': args.gaussian,
+        'predict_sigma': args.predict_sigma,
+        'retinotopy_init_sigma': args.init_sigma,
+        'discretized_spatial': args.discretized,
+        'kernel_size': args.kernel_size,
+        'sigma': args.sigma,
+        'init_gain': args.init_gain,
     }
 
     if args.retinotopy:
@@ -233,7 +257,12 @@ def main():
         'init_temp': args.temp, 
         'min_temp': args.min_temp,
         'temp_decay_t': args.temp_decay_t,
+        'cp_every_epoch': args.cp_every_epoch,
+        'cp_path': args.cp_path,
     }
+    if args.cp_every_epoch:
+        os.makedirs(args.cp_path, exist_ok=True)
+
     trainer_config['wandb_config'] = model_config | trainer_config
 
     if args.finetune_lr_scale is not None:

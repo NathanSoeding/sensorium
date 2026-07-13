@@ -144,6 +144,8 @@ def standard_trainer(
     init_temp=1.0,
     min_temp=None,
     temp_decay_t=None,
+    cp_every_epoch=False,
+    cp_path=None,
     **kwargs
 ):
     """
@@ -212,13 +214,13 @@ def standard_trainer(
             if scale_loss
             else 1.0
         )
-        regularizers = int(
-            not detach_core
-        ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='sum') 
         # Here I removed readout regularization for overcompleteness sanity check
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, temp=temp, **kwargs)
         targets = args[1].to(device)
+        regularizers = int(
+            not detach_core
+        ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='sum') + model.shifter.regularizer(data_key)
         
         # poisson_preds.append(preds)
         # poisson_targets.append(targets)
@@ -409,6 +411,10 @@ def standard_trainer(
 
         model.eval()
         model.core.train()
+
+        if cp_every_epoch:
+            torch.save(model.state_dict(), f'{cp_path}/model_weights{epoch}.pth')
+
         # Print and log metrics after each epoch
         if tracker is not None:
             if wandb_project and use_wandb:

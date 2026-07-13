@@ -76,7 +76,7 @@ def stacked_core_full_gauss_readout(
     factorize_spatial=False,
     shift_noise_scale=None,
     retinotopy_spatial=None,
-    retinotopy_fourier=False,
+    fourier_spatial=False,
     fourier_max_freq=4,
     init_temp=1.0,
     hard=False,
@@ -87,8 +87,15 @@ def stacked_core_full_gauss_readout(
     retina_mlp_layers=3,
     entropy_reg=False,
     entropy_reg_weight=1.0,
-    stochastic=False, 
-    init_noise=1.0,
+    diagonal=True,
+    com_reg_weight=0.0,
+    gaussian_spatial=None,
+    predict_sigma=False,
+    retinotopy_init_sigma=1.0,
+    discretized_spatial=False,
+    kernel_size=7,
+    sigma=2.0,
+    init_gain=1.0,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -210,13 +217,21 @@ def stacked_core_full_gauss_readout(
             grid_mean_predictor=grid_mean_predictor,
             grid_mean_predictor_type=grid_mean_predictor_type,
             retinotopy_spatial=retinotopy_spatial,
-            retinotopy_fourier=retinotopy_fourier,
+            fourier_spatial=fourier_spatial,
             fourier_max_freq=fourier_max_freq,
             init_temp=init_temp,
             hard=hard,
             normalize_logits=normalize_logits,
             entropy_reg=entropy_reg,
             entropy_reg_weight=entropy_reg_weight,
+            diagonal=diagonal,
+            com_reg_weight=com_reg_weight,
+            gaussian_spatial=gaussian_spatial,
+            predict_sigma=predict_sigma,
+            init_sigma=retinotopy_init_sigma,
+            discretized_spatial=discretized_spatial,
+            kernel_size=kernel_size,
+            sigma=sigma,
         )
     else:
         raise(NotImplementedError)
@@ -230,8 +245,8 @@ def stacked_core_full_gauss_readout(
                 hidden_channels_shifter=hidden_channels_shifter,
                 shift_layers=shift_layers,
                 gamma_shifter=gamma_shifter,
-                stochastic=stochastic, 
-                init_noise=init_noise,
+                bias=shifter_bias,
+                init_gain=init_gain,
             )
 
         elif shifter_type == "StaticAffine":

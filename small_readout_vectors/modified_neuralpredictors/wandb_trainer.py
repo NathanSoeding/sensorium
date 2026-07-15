@@ -220,7 +220,7 @@ def standard_trainer(
         targets = args[1].to(device)
         regularizers = int(
             not detach_core
-        ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='sum') + model.shifter.regularizer(data_key)
+        ) * model.core.regularizer() + model.readout.regularizer(data_key, reduction='sum')
         
         # poisson_preds.append(preds)
         # poisson_targets.append(targets)

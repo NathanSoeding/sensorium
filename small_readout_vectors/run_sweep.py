@@ -49,6 +49,7 @@ def train(
     ]
 
     dataset_fn = "sensorium.datasets.static_loaders"
+    print(batch_size)
     dataset_config = {
         "paths": filenames,
         "normalize": True,
@@ -100,7 +101,7 @@ def train(
         
     if init_path is not None:
         print(f'loading {init_path}')
-        model.load_state_dict(torch.load(init_path))
+        model.load_state_dict(torch.load(init_path, map_location=device))
 
     if bottleneck_layers is not None:
         print(f'creating bottleneck with dims {bottleneck_layers}')
@@ -213,16 +214,19 @@ def metric(embeds):
     
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', type=str, required=True)
-    parser.add_argument('--output_root', type=str, default="runs/sweeps")
+    parser.add_argument('--bottleneck_hidden_dim', type=int)
+    parser.add_argument('--bottleneck_latent_dim', type=int)
+    parser.add_argument('--feature_reg_weight', type=float)
+    parser.add_argument('--finetune_lr_scale', type=float)
+    parser.add_argument('--barlow_w', type=float)
     args = parser.parse_args()
 
     wandb.init(project='small readout vectors', name='sweep')
     config = wandb.config
 
-    bottleneck_layers = [config.bottleneck_hidden_dim, config.bottleneck_latent_dim] 
+    bottleneck_layers = [args.bottleneck_hidden_dim, args.bottleneck_latent_dim] 
 
-    run_base = os.path.join(args.output_root, wandb.run.id)
+    run_base = os.path.join("runs/sweeps", wandb.run.id)
 
     seeds = [0, 42, 123]
     init_paths = [
@@ -237,15 +241,15 @@ def main():
 
         train(
             seed=seed, 
-            device=args.device, 
+            device='cuda:0', 
             output_dir=run_output_dir, 
             hidden_channels=64, 
             init_path=init_path, 
             bottleneck_layers=bottleneck_layers,
-            finetune_lr_scale=config.finetune_lr_scale, 
+            finetune_lr_scale=args.finetune_lr_scale, 
             batch_size=512, 
-            single_mlp=config.weight_sharing, 
-            feature_reg_weight=config.feature_reg_weight, 
+            single_mlp=True, 
+            feature_reg_weight=args.feature_reg_weight, 
             barlow_w=config.barlow_w, 
             no_wandb=True, 
         )
@@ -255,7 +259,7 @@ def main():
         in_dim=64, 
         hidden_dims=bottleneck_layers[:-1], 
         embedding_dim=bottleneck_layers[-1], 
-        weight_sharing=config.weight_sharing, 
+        weight_sharing=True, 
     )
     
     def get_features(model_paths, combine_mice=True):

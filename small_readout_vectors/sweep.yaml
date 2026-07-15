@@ -8,22 +8,22 @@ metric:
 
 parameters:
   bottleneck_hidden_dim:
-    values: [64, 128, 256, 512]
+    values: [64]
   
   bottleneck_latent_dim:
-    values: [64, 48, 32, 24, 16]
+    values: [50, 49, 48, 47, 46, 45, 44, 43, 42, 41, 40]
 
   feature_reg_weight:
-    distribution: log_uniform_values
+    distribution: uniform
     min: 1.0
     max: 48.0
 
   finetune_lr_scale:
-    values: [0, 0.01, 0.1]
+    values: [0.1]
 
   barlow_w:
-    distribution: log_uniform_values
-    min: 100.0
+    distribution: uniform
+    min: 0.0
     max: 100000.0
 
 program: run_sweep.py

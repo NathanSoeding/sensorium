@@ -163,7 +163,7 @@ def main():
     trainer_config = {
         'lr_init': 1e-3,
         'lr_decay': 0.3,
-        'patience': 10, 
+        'patience': 3, 
         'min_lr': 1e-5, 
         'wandb_project': 'small readout vectors',
         'wandb_config': autoencoder_config,

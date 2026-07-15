@@ -194,6 +194,8 @@ def main():
         }
     if args.retinotopy_shifter:
         model_config['retinotopy_spatial']['in_dim'] = 4
+    else:
+        model_config['retinotopy_spatial']['in_dim'] = None
 
     if args.whitener:
         model_config['whitener'] = Whitener(model_config['hidden_channels'], args.whitener_ema_decay)

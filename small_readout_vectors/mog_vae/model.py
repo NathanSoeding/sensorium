@@ -18,7 +18,9 @@ class GumbelSoftmax(nn.Module):
         return -torch.log(-torch.log(U + eps) + eps)
 
     def gumbel_softmax_sample(self, logits, temperature):
-        y = logits + self.sample_gumbel(logits.size(), logits.is_cuda)
+        gumbel_noise = self.sample_gumbel(logits.size(), logits.is_cuda)
+        y = logits + gumbel_noise if self.training else logits  # Don't add noise when validating
+
         return F.softmax(y / temperature, dim=-1)
 
     def gumbel_softmax(self, logits, temperature, hard=False):
@@ -231,7 +233,7 @@ class MoGVAE(nn.Module):
                     nn.init.constant_(m.bias, 0) 
 
     
-    def forward(self, x, temperature=1.0, hard=False, return_params=False):
+    def forward(self, x, temperature=1.0, hard=True, return_params=False):
         out_inf = self.inference(x, temperature, hard)
 
         z, y = out_inf['z'], out_inf['y']

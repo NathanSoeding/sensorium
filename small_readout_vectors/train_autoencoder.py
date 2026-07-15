@@ -1,5 +1,4 @@
 import os
-import yaml
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -7,9 +6,9 @@ import argparse
 from nnfabrik.builder import get_data, get_trainer
 
 from modified_neuralpredictors.create_model import stacked_core_full_gauss_readout
-from modified_neuralpredictors.wandb_trainer import standard_trainer
+from modified_neuralpredictors.wandb_trainer_ae import standard_trainer
 
-from ..models.autoencoder import Autoenc
+from models.autoencoder import Autoenc
 
 def get_args():
     parser = argparse.ArgumentParser(description="Pytorch Training Script")
@@ -18,6 +17,9 @@ def get_args():
     parser.add_argument('--output_dir', type=str, default="runs/exp1")
     parser.add_argument('--base_path', type=str, default='runs/base/exp0/model_weights.pth')
     parser.add_argument('--base_channels', type=int, default=128)
+    parser.add_argument('--finetune_lr_factor', type=float, default=0.0)
+    parser.add_argument('--poisson_weight', type=float, default=1.0)
+    parser.add_argument('--mse_weight', type=float, default=1000.0)
 
     parser.add_argument('--latent_dim', type=int, default=16)
     parser.add_argument('--hidden_dims', type=int, nargs='+', default=[64])
@@ -94,9 +96,10 @@ def main():
     model.load_state_dict(torch.load(args.base_path))
 
     # Freeze entire model
-    for param in model.parameters():
-        param.requires_grad = False
-    
+    if args.finetune_lr_factor == 0.0:
+        for param in model.parameters():
+            param.requires_grad = False
+
     autoencoder_config = {
         'latent_dim': args.latent_dim, 
         'hidden_dims': args.hidden_dims, 
@@ -131,12 +134,15 @@ def main():
         'avg_loss': False,
         'lr_init': 0.009,
         'device': device, 
-        'wandb_project': 'small readout vectors',
+        'wandb_project':  'small readout vectors',
         'wandb_config': autoencoder_config,
-        'wandb_name': f'autoencoder{autoencoder_config['latent_dim']}',
+        'wandb_name': f'autoencoder{autoencoder_config['latent_dim']}', 
         'train_neurons': train_neurons, 
         'validation_neurons': validation_neurons, 
+        'poisson_weight': args.poisson_weight,
+        'mse_weight': args.mse_weight,
     }
+    trainer_config['finetune_lr'] = args.finetune_lr_factor * trainer_config['lr_init']
 
     validation_score, trainer_output, state_dict = standard_trainer(
         model, 
@@ -145,9 +151,6 @@ def main():
         **trainer_config
     )
     torch.save(autoencoder.state_dict(), f'{args.output_dir}/autoencoder_weights.pth')
-    with open(f'{args.output_dir}/data.yaml', 'w') as f:
-        data = autoencoder_config | {'validation_score': validation_score}
-        yaml.dump(data, f, default_flow_style=False)
 
 if __name__ == "__main__":
     main()

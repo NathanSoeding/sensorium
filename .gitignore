@@ -30,3 +30,28 @@ logs/
 *.csv
 notebooks/data
 notebooks/lurz2020
+
+# Experiment tracking
+wandb/
+**/wandb/
+
+# Training outputs
+runs/
+**/runs/
+
+# Model checkpoints
+checkpoints/
+**/checkpoints/
+*.pth
+*.pt
+
+# Generated plots
+plots/
+**/plots/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local environments
+.venv/

@@ -3,7 +3,7 @@ import pandas as pd
 import torch
 import numpy as np
 
-from nnfabrik.builder import get_data
+from sensorium.utility.utils import get_data
 from neuralpredictors.training import eval_state, device_state
 from neuralpredictors.data.datasets import FileTreeDataset
 

@@ -9,7 +9,7 @@ from neuralpredictors.training import (
     MultipleObjectiveTracker,
     LongCycler,
 )
-from nnfabrik.utility.nn_helpers import set_random_seed
+from sensorium.utility.utils import set_random_seed
 
 from ..utility import scores
 from ..utility.scores import get_correlations, get_poisson_loss

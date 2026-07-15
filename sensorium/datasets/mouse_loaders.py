@@ -4,7 +4,7 @@ import numpy as np
 import os
 from torch.utils.data import DataLoader
 from torch.utils.data.sampler import SubsetRandomSampler
-from nnfabrik.utility.nn_helpers import set_random_seed
+from sensorium.utility.utils import set_random_seed
 from neuralpredictors.data.datasets import StaticImageSet, FileTreeDataset
 
 from neuralpredictors.data.transforms import (

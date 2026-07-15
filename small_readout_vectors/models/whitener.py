@@ -47,7 +47,7 @@ class Whitener(nn.Module):
         return whitened_readouts[None, :, None, :]
 
     def forward(self, features):
-        features = features.transpose(1, 2).squeeze()
+        features = features.transpose(1, 2)
         
         if self.training:
             self.update_ema(features)

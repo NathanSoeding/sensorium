@@ -85,6 +85,7 @@ def get_parser():
     parser.add_argument('--kernel_size', type=int, default=7)
     parser.add_argument('--sigma', type=float, default=2.0)
     parser.add_argument('--init_gain', type=float, default=1.0)
+    parser.add_argument('--more_data', action='store_true', default=False)
 
     return parser
 
@@ -108,6 +109,19 @@ def main():
     filenames = [
         os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
     ]
+    if args.more_data:
+        more_basepath = "/usr/users/agecker/datasets/more_data_like_sensorium_2022"
+        for file in [
+            "static20457-5-9-94c6ff995dac583098847cfecd43e7b6",
+            "static20622-2-14-94c6ff995dac583098847cfecd43e7b6",
+            "static20892-10-10-94c6ff995dac583098847cfecd43e7b6",
+            "static22223-2-15-94c6ff995dac583098847cfecd43e7b6",
+            "static22564-2-12-94c6ff995dac583098847cfecd43e7b6",
+            "static22620-4-15-94c6ff995dac583098847cfecd43e7b6",
+            "static23555-5-12-94c6ff995dac583098847cfecd43e7b6",
+        ]:
+            filenames.append(os.path.join(more_basepath, file))
+
 
     dataset_fn = "sensorium.datasets.static_loaders"
     dataset_config = {

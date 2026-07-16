@@ -9,10 +9,10 @@ from neuralpredictors.training import (
     MultipleObjectiveTracker,
     LongCycler,
 )
-from sensorium.utility.utils import set_random_seed
-
 from ..utility import scores
 from ..utility.scores import get_correlations, get_poisson_loss
+from ..utility.utils import set_random_seed
+import wandb
 
 
 def standard_trainer(

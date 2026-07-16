@@ -110,7 +110,7 @@ def main():
         os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
     ]
     if args.more_data:
-        more_basepath = "/usr/users/agecker/datasets/more_data_like_sensorium_2022"
+        more_basepath = "/user/turishcheva/more_data_like_sensorium_2022"
         for file in [
             "static20457-5-9-94c6ff995dac583098847cfecd43e7b6",
             "static20622-2-14-94c6ff995dac583098847cfecd43e7b6",

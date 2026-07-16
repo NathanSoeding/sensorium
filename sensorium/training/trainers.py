@@ -163,12 +163,6 @@ def standard_trainer(
     else:
         tracker = None
 
-    # Variables for tracking training losses
-    epoch_loss_total = 0.0
-    epoch_loss_main = 0.0
-    epoch_loss_reg = 0.0
-    batch_count = 0
-
     # train over epochs
     for epoch, val_obj in early_stopping(
         model,
@@ -184,7 +178,6 @@ def standard_trainer(
         scheduler=scheduler,
         lr_decay_steps=lr_decay_steps,
     ):
-        epoch_loss_total = 0.0
         epoch_loss_main = 0.0
         epoch_loss_reg = 0.0
         batch_count = 0
@@ -221,7 +214,6 @@ def standard_trainer(
 
             pred_loss, regularizers = loss_components
             with torch.no_grad():
-                epoch_loss_total += loss.item()
                 epoch_loss_main += pred_loss.item()
                 epoch_loss_reg += regularizers.item()
                 batch_count += 1
@@ -230,9 +222,33 @@ def standard_trainer(
                 optimizer.step()
                 optimizer.zero_grad()
 
+        # Calculate average epoch losses
+        if batch_count > 0:
+            epoch_loss_main /= batch_count
+            epoch_loss_reg /= batch_count
+
+        # Print and log metrics after each epoch
+        if tracker is not None:
+            if wandb_project and use_wandb:
+                wandb_dict = {
+                    "Main loss": epoch_loss_main,
+                    "Regularizers": epoch_loss_reg,
+                    "Learning Rate": optimizer.param_groups[0]['lr'],
+                }
+            
+            # Log validation metrics from tracker
+            for key in tracker.log.keys():
+                key_val = tracker.log[key][-1]
+                if wandb_project and use_wandb:
+                    wandb_dict[f"val/{key}"] = key_val
+            
+            # Log to wandb
+            if wandb_project and use_wandb:
+                wandb.log(wandb_dict, step=epoch)
+
     ##### Model evaluation ####################################################################################################
-    model.eval()
-    tracker.finalize() if track_training else None
+    if tracker is not None:
+        tracker.finalize() if track_training else None
 
     # Compute avg validation and test correlation
     validation_correlation = get_correlations(
@@ -240,9 +256,16 @@ def standard_trainer(
     )
 
     # return the whole tracker output as a dict
-    output = {k: v for k, v in tracker.log.items()} if track_training else {}
+    output = {k: v for k, v in tracker.log.items()} if track_training and tracker is not None else {}
     output["validation_corr"] = validation_correlation
 
     score = np.mean(validation_correlation)
+
+    # Log final metrics
+    if wandb_project and use_wandb:
+        wandb.log({
+            "final/validation_corr_mean": score,
+        })
+        wandb.finish()
 
     return score, output, model.state_dict()

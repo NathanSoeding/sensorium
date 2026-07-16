@@ -22,8 +22,9 @@ def get_parser():
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
     parser.add_argument('--readout_type', type=str, default='gaussian')
     parser.add_argument('--more_data', action='store_true', default=False)
+    parser.add_argument('--shifter_bias', action='store_true', default=False)
     parser.add_argument('--shifter_features', type=int, default=5)
-    parser.add_argument('--shifter_layers', type=int, default=3)
+    parser.add_argument('--shifter_layers', type=int, default=1)
     
     return parser
 
@@ -100,6 +101,9 @@ def main():
         'init_mu_range': 0.3,
         'gauss_type': 'full',
         'shifter': True,
+        'shifter_bias': args.shifter_bias,
+        'hidden_channels_shifter': args.shifter_features,
+        'shift_layers': args.shifter_layers,
         'batch_norm_scale': [True, True, True, False],
         'core_bias': [True, True, True, False],
         'regularizer_type': 'adaptive_log_norm',

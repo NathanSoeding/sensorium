@@ -129,7 +129,6 @@ def standard_trainer(
         patience=patience,
         threshold=tolerance,
         min_lr=min_lr,
-        verbose=verbose,
         threshold_mode="abs",
     )
 

@@ -2,9 +2,9 @@ import os
 import torch
 import argparse
 
-from ..utility.utils import get_data, set_random_seed
-from ..models.models import stacked_core_full_gauss_readout
-from ..training.trainers import standard_trainer
+from sensorium.utility.utils import get_data, set_random_seed
+from sensorium.models.models import stacked_core_full_gauss_readout
+from sensorium.training.trainers import standard_trainer
 
 def get_parser():
     parser = argparse.ArgumentParser()

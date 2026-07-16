@@ -1,3 +1,4 @@
+from importlib import import_module
 import torch
 from torch import nn
 from functools import partial
@@ -73,6 +74,18 @@ def set_random_seed(seed: int, deterministic: bool = True):
         torch.backends.cudnn.benchmark = False
         torch.backends.cudnn.deterministic = True
     torch.manual_seed(seed)  # this sets both CPU and CUDA seeds for PyTorch
+
+
+def split_module_name(abs_class_name):
+    abs_module_path = ".".join(abs_class_name.split(".")[:-1])
+    class_name = abs_class_name.split(".")[-1]
+    return (abs_module_path, class_name)
+
+
+def dynamic_import(abs_module_path, class_name):
+    module_object = import_module(abs_module_path)
+    target_class = getattr(module_object, class_name)
+    return target_class
 
 
 def resolve_fn(fn_name, default_base):

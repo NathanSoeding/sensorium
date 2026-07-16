@@ -25,9 +25,11 @@ def stacked_core_full_gauss_readout(
     gamma_input=15.5,
     skip=0,
     final_nonlinearity=True,
+    nonlinearity_type='AdaptiveELU',
     momentum=0.9,
     pad_input=False,
     batch_norm=True,
+    batch_norm_scale=[],
     hidden_dilation=1,
     laplace_padding=None,
     input_regularizer="LaplaceL2norm",
@@ -35,7 +37,6 @@ def stacked_core_full_gauss_readout(
     init_mu_range=0.2,
     init_sigma=1.0,
     readout_bias=True,
-    gamma_readout=4,
     elu_offset=0,
     stack=None,
     depth_separable=False,
@@ -52,6 +53,9 @@ def stacked_core_full_gauss_readout(
     shifter_bias=True,
     hidden_padding=None,
     core_bias=True,
+    feature_reg_weight=4,
+    regularizer_type="adaptive_log_norm", 
+    gamma_sigma=0.25,
     whitener=None,
     whitener_momentum=0.003,
 ):
@@ -111,6 +115,7 @@ def stacked_core_full_gauss_readout(
         gamma_input=gamma_input,
         skip=skip,
         final_nonlinearity=final_nonlinearity,
+        nonlinearity_type=nonlinearity_type,
         bias=core_bias,
         momentum=momentum,
         pad_input=pad_input,
@@ -124,6 +129,7 @@ def stacked_core_full_gauss_readout(
         attention_conv=attention_conv,
         hidden_padding=hidden_padding,
         use_avg_reg=use_avg_reg,
+        batch_norm_scale=batch_norm_scale,
     )
 
     if whitener is True:
@@ -131,6 +137,7 @@ def stacked_core_full_gauss_readout(
             model_dim=hidden_channels,
             momentum=whitener_momentum,
         )
+    print(whitener)
 
     in_shapes_dict = {
         k: get_module_output(core, v[in_name])[1:]
@@ -144,7 +151,9 @@ def stacked_core_full_gauss_readout(
         init_mu_range=init_mu_range,
         bias=readout_bias,
         init_sigma=init_sigma,
-        gamma_readout=gamma_readout,
+        feature_reg_weight=feature_reg_weight,
+        regularizer_type=regularizer_type,
+        gamma_sigma=gamma_sigma,
         gauss_type=gauss_type,
         grid_mean_predictor=grid_mean_predictor,
         grid_mean_predictor_type=grid_mean_predictor_type,

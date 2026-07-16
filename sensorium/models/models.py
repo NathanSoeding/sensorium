@@ -1,6 +1,5 @@
 from torch import nn
 
-from sensorium.utility.utils import set_random_seed, get_dims_for_loader_dict
 from neuralpredictors.utils import get_module_output
 from neuralpredictors.layers.encoders import FiringRateEncoder
 from neuralpredictors.layers.shifters import MLPShifter, StaticAffine2dShifter
@@ -10,6 +9,7 @@ from neuralpredictors.layers.cores import (
     RotationEquivariant2dCore,
 )
 
+from ..utility.utils import set_random_seed, get_dims_for_loader_dict
 from .readouts import MultipleFullGaussian2d
 from .utility import prepare_grid
 

@@ -12,6 +12,7 @@ from neuralpredictors.training import (
 from ..utility import scores
 from ..utility.scores import get_correlations, get_poisson_loss
 from ..utility.utils import set_random_seed
+
 import wandb
 
 
@@ -40,6 +41,9 @@ def standard_trainer(
     cb=None,
     track_training=False,
     detach_core=False,
+    use_wandb=True,
+    wandb_project=None,
+    wandb_name="",
     **kwargs
 ):
     """
@@ -74,6 +78,13 @@ def standard_trainer(
 
     """
 
+    if wandb_project and use_wandb:
+        wandb.init(
+            project=wandb_project,
+            config={},
+            name=wandb_name,
+        )
+
     def full_objective(model, dataloader, data_key, *args, **kwargs):
 
         loss_scale = (
@@ -83,16 +94,16 @@ def standard_trainer(
         )
         regularizers = int(
             not detach_core
-        ) * model.core.regularizer() + model.readout.regularizer(data_key)
-        return (
-            loss_scale
-            * criterion(
-                model(args[0].to(device), data_key=data_key, **kwargs),
-                args[1].to(device),
-            )
-            + regularizers
-        )
+        ) * model.core.regularizer() + model.readout.regularizer(data_key, whitener=model.whitener)
 
+        imgs = args[0].to(device)
+        preds = model(imgs, data_key=data_key, **kwargs)
+        targets = args[1].to(device)
+        prediction_loss = loss_scale * criterion(preds, targets)
+        loss = prediction_loss + regularizers
+
+        return loss, (prediction_loss, regularizers)
+        
     ##### Model training ####################################################################################################
     model.to(device)
     set_random_seed(seed)
@@ -128,7 +139,7 @@ def standard_trainer(
         else loss_accum_batch_n
     )
 
-    if track_training:
+    if wandb_project and use_wandb:
         tracker_dict = dict(
             correlation=partial(
                 get_correlations,
@@ -152,6 +163,12 @@ def standard_trainer(
     else:
         tracker = None
 
+    # Variables for tracking training losses
+    epoch_loss_total = 0.0
+    epoch_loss_main = 0.0
+    epoch_loss_reg = 0.0
+    batch_count = 0
+
     # train over epochs
     for epoch, val_obj in early_stopping(
         model,
@@ -167,6 +184,10 @@ def standard_trainer(
         scheduler=scheduler,
         lr_decay_steps=lr_decay_steps,
     ):
+        epoch_loss_total = 0.0
+        epoch_loss_main = 0.0
+        epoch_loss_reg = 0.0
+        batch_count = 0
 
         # print the quantities from tracker
         if verbose and tracker is not None:
@@ -188,7 +209,7 @@ def standard_trainer(
 
             batch_args = list(data)
             batch_kwargs = data._asdict() if not isinstance(data, dict) else data
-            loss = full_objective(
+            loss, loss_components = full_objective(
                 model,
                 dataloaders["train"],
                 data_key,
@@ -197,6 +218,14 @@ def standard_trainer(
                 detach_core=detach_core
             )
             loss.backward()
+
+            pred_loss, regularizers = loss_components
+            with torch.no_grad():
+                epoch_loss_total += loss.item()
+                epoch_loss_main += pred_loss.item()
+                epoch_loss_reg += regularizers.item()
+                batch_count += 1
+
             if (batch_no + 1) % optim_step_count == 0:
                 optimizer.step()
                 optimizer.zero_grad()

@@ -43,6 +43,7 @@ def standard_trainer(
     detach_core=False,
     use_wandb=True,
     wandb_project=None,
+    wandb_config=None,
     wandb_name="",
     **kwargs
 ):
@@ -81,7 +82,7 @@ def standard_trainer(
     if wandb_project and use_wandb:
         wandb.init(
             project=wandb_project,
-            config={},
+            config=wandb_config or {},
             name=wandb_name,
         )
 

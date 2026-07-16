@@ -3,6 +3,7 @@ from torch import nn
 from neuralpredictors.utils import get_module_output
 from neuralpredictors.layers.encoders import FiringRateEncoder
 from neuralpredictors.layers.shifters import MLPShifter, StaticAffine2dShifter
+from neuralpredictors.layers.whiteners import Whitener
 from neuralpredictors.layers.cores import (
     Stacked2dCore,
     SE2dCore,
@@ -51,6 +52,8 @@ def stacked_core_full_gauss_readout(
     shifter_bias=True,
     hidden_padding=None,
     core_bias=True,
+    whitener=None,
+    whitener_momentum=0.003,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -123,6 +126,12 @@ def stacked_core_full_gauss_readout(
         use_avg_reg=use_avg_reg,
     )
 
+    if whitener is True:
+        whitener = Whitener(
+            model_dim=hidden_channels,
+            momentum=whitener_momentum,
+        )
+
     in_shapes_dict = {
         k: get_module_output(core, v[in_name])[1:]
         for k, v in session_shape_dict.items()
@@ -163,6 +172,7 @@ def stacked_core_full_gauss_readout(
 
     model = FiringRateEncoder(
         core=core,
+        whitener=whitener,
         readout=readout,
         shifter=shifter,
         elu_offset=elu_offset,

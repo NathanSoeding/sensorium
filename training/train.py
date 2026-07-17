@@ -20,7 +20,12 @@ def get_parser():
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--disable_whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
+
     parser.add_argument('--readout_type', type=str, default='gaussian')
+
+    parser.add_argument('--retinotopy_features', type=int, default=30)
+    parser.add_argument('--retinotopy_layers', type=int, default=1)
+
     parser.add_argument('--more_data', action='store_true', default=False)
     parser.add_argument('--shifter_bias', action='store_true', default=False)
     parser.add_argument('--shifter_features', type=int, default=5)
@@ -114,8 +119,8 @@ def main():
         model_config['grid_mean_predictor'] = {
             'type': 'cortex',
             'input_dimensions': 2,
-            'hidden_layers': 1,
-            'hidden_features': 30,
+            'hidden_layers': args.retinotopy_layers,
+            'hidden_features': args.retinotopy_features,
             'final_tanh': True
         }
         model_config['init_sigma'] = 0.1

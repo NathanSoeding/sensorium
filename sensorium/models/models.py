@@ -49,6 +49,7 @@ def stacked_core_full_gauss_readout(
     input_channels_shifter=2,
     hidden_channels_shifter=5,
     shift_layers=3,
+    init_gain=1.0,
     gamma_shifter=0,
     shifter_bias=True,
     hidden_padding=None,
@@ -170,6 +171,7 @@ def stacked_core_full_gauss_readout(
                 shift_layers=shift_layers,
                 gamma_shifter=gamma_shifter,
                 bias=shifter_bias,
+                init_gain=init_gain,
             )
 
         elif shifter_type == "StaticAffine":

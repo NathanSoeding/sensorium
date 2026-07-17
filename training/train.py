@@ -25,6 +25,7 @@ def get_parser():
     parser.add_argument('--shifter_bias', action='store_true', default=False)
     parser.add_argument('--shifter_features', type=int, default=5)
     parser.add_argument('--shifter_layers', type=int, default=1)
+    parser.add_argument('--init_gain', type=float, default=0.1)
     
     return parser
 
@@ -114,7 +115,7 @@ def main():
         # 'discretized_spatial': args.discretized,
         # 'kernel_size': args.kernel_size,
         # 'sigma': args.sigma,
-        # 'init_gain': args.init_gain,
+        'init_gain': args.init_gain,
         'whitener': args.whitener,
         'whitener_momentum': args.whitener_momentum,
     }

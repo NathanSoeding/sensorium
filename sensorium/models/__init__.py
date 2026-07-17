@@ -1,1 +1,1 @@
-from .models import stacked_core_full_gauss_readout
+from .models import stacked_core_full_gauss_readout, stacked_core_factorized_readout

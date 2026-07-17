@@ -178,19 +178,11 @@ def standard_trainer(
         scheduler=scheduler,
         lr_decay_steps=lr_decay_steps,
     ):
+        model.train()
         epoch_loss_main = 0.0
         epoch_loss_reg = 0.0
         batch_count = 0
 
-        # print the quantities from tracker
-        if verbose and tracker is not None:
-            print("=======================================")
-            for key in tracker.log.keys():
-                print(key, tracker.log[key][-1], flush=True)
-
-        # executes callback function if passed in keyword args
-        if cb is not None:
-            cb()
 
         # train over batches
         optimizer.zero_grad()
@@ -227,6 +219,12 @@ def standard_trainer(
             epoch_loss_main /= batch_count
             epoch_loss_reg /= batch_count
 
+        # executes callback function if passed in keyword args
+        if cb is not None:
+            cb()
+
+        model.eval()
+
         # Print and log metrics after each epoch
         if tracker is not None:
             if wandb_project and use_wandb:
@@ -247,6 +245,7 @@ def standard_trainer(
                 wandb.log(wandb_dict, step=epoch)
 
     ##### Model evaluation ####################################################################################################
+    model.eval()
     if tracker is not None:
         tracker.finalize() if track_training else None
 

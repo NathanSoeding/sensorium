@@ -11,7 +11,7 @@ from neuralpredictors.layers.cores import (
 )
 
 from ..utility.utils import set_random_seed, get_dims_for_loader_dict
-from .readouts import MultipleFullGaussian2d
+from .readouts import MultipleFullGaussian2d, MultipleFactorized2d
 from .utility import prepare_grid
 
 
@@ -138,7 +138,6 @@ def stacked_core_full_gauss_readout(
             model_dim=hidden_channels,
             momentum=whitener_momentum,
         )
-    print(whitener)
 
     in_shapes_dict = {
         k: get_module_output(core, v[in_name])[1:]
@@ -159,6 +158,185 @@ def stacked_core_full_gauss_readout(
         grid_mean_predictor=grid_mean_predictor,
         grid_mean_predictor_type=grid_mean_predictor_type,
         source_grids=source_grids,
+    )
+
+    if shifter is True:
+        data_keys = [i for i in dataloaders.keys()]
+        if shifter_type == "MLP":
+            shifter = MLPShifter(
+                data_keys=data_keys,
+                input_channels=input_channels_shifter,
+                hidden_channels_shifter=hidden_channels_shifter,
+                shift_layers=shift_layers,
+                gamma_shifter=gamma_shifter,
+                bias=shifter_bias,
+                init_gain=init_gain,
+            )
+
+        elif shifter_type == "StaticAffine":
+            shifter = StaticAffine2dShifter(
+                data_keys=data_keys,
+                input_channels=input_channels_shifter,
+                bias=shifter_bias,
+                gamma_shifter=gamma_shifter,
+            )
+
+    model = FiringRateEncoder(
+        core=core,
+        whitener=whitener,
+        readout=readout,
+        shifter=shifter,
+        elu_offset=elu_offset,
+    )
+
+    return model
+
+
+def stacked_core_factorized_readout(
+    dataloaders,
+    seed,
+    hidden_channels=32,
+    input_kern=13,
+    hidden_kern=3,
+    layers=3,
+    gamma_input=15.5,
+    skip=0,
+    final_nonlinearity=True,
+    nonlinearity_type='AdaptiveELU',
+    momentum=0.9,
+    pad_input=False,
+    batch_norm=True,
+    batch_norm_scale=[],
+    track_running_stats=False,
+    hidden_dilation=1,
+    laplace_padding=None,
+    input_regularizer="LaplaceL2norm",
+    use_avg_reg=False,
+    readout_bias=True,
+    elu_offset=0,
+    stack=None,
+    depth_separable=False,
+    linear=False,
+    attention_conv=False,
+    shifter=None,
+    shifter_type="MLP",
+    input_channels_shifter=2,
+    hidden_channels_shifter=5,
+    shift_layers=3,
+    init_gain=1.0,
+    gamma_shifter=0,
+    shifter_bias=True,
+    hidden_padding=None,
+    core_bias=True,
+    feature_reg_weight=4,
+    regularizer_type="adaptive_log_norm", 
+    gamma_sigma=0.25,
+    whitener=None,
+    whitener_momentum=0.003,
+    readout_kernel_size=7,
+    readout_kernel_sigma=2.0,
+):
+    """
+    Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
+
+    Args:
+        dataloaders: a dictionary of dataloaders, one loader per session
+            in the format {'data_key': dataloader object, .. }
+        seed: random seed
+        grid_mean_predictor: if not None, needs to be a dictionary of the form
+            {
+            'type': 'cortex',
+            'input_dimensions': 2,
+            'hidden_layers':0,
+            'hidden_features':20,
+            'final_tanh': False,
+            }
+            In that case the datasets need to have the property `neurons.cell_motor_coordinates`
+        share_features: whether to share features between readouts. This requires that the datasets
+            have the properties `neurons.multi_match_id` which are used for matching. Every dataset
+            has to have all these ids and cannot have any more.
+        all other args: See Documentation of Stacked2dCore in neuralpredictors.layers.cores and
+            PointPooled2D in neuralpredictors.layers.readouts
+
+    Returns: An initialized model which consists of model.core and model.readout
+    """
+
+    if "train" in dataloaders.keys():
+        dataloaders = dataloaders["train"]
+
+    # Obtain the named tuple fields from the first entry of the first dataloader in the dictionary
+    batch = next(iter(list(dataloaders.values())[0]))
+    in_name, out_name = (
+        list(batch.keys())[:2] if isinstance(batch, dict) else batch._fields[:2]
+    )
+
+    session_shape_dict = get_dims_for_loader_dict(dataloaders)
+    n_neurons_dict = {k: v[out_name][1] for k, v in session_shape_dict.items()}
+    input_channels = [v[in_name][1] for v in session_shape_dict.values()]
+
+    core_input_channels = (
+        list(input_channels.values())[0]
+        if isinstance(input_channels, dict)
+        else input_channels[0]
+    )
+
+    set_random_seed(seed)
+    grid_mean_predictor = {
+        'type': 'cortex',
+        'input_dimensions': 2,
+        '_': '_',
+    }
+    grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(grid_mean_predictor, dataloaders)
+
+    core = Stacked2dCore(
+        input_channels=core_input_channels,
+        hidden_channels=hidden_channels,
+        input_kern=input_kern,
+        hidden_kern=hidden_kern,
+        layers=layers,
+        gamma_input=gamma_input,
+        skip=skip,
+        final_nonlinearity=final_nonlinearity,
+        nonlinearity_type=nonlinearity_type,
+        bias=core_bias,
+        momentum=momentum,
+        pad_input=pad_input,
+        batch_norm=batch_norm,
+        track_running_stats=track_running_stats,
+        hidden_dilation=hidden_dilation,
+        laplace_padding=laplace_padding,
+        input_regularizer=input_regularizer,
+        stack=stack,
+        depth_separable=depth_separable,
+        linear=linear,
+        attention_conv=attention_conv,
+        hidden_padding=hidden_padding,
+        use_avg_reg=use_avg_reg,
+        batch_norm_scale=batch_norm_scale,
+    )
+
+    if whitener is True:
+        whitener = Whitener(
+            model_dim=hidden_channels,
+            momentum=whitener_momentum,
+        )
+
+    in_shapes_dict = {
+        k: get_module_output(core, v[in_name])[1:]
+        for k, v in session_shape_dict.items()
+    }
+
+    readout = MultipleFactorized2d(
+        in_shape_dict=in_shapes_dict,
+        loader=dataloaders,
+        n_neurons_dict=n_neurons_dict,
+        bias=readout_bias,
+        feature_reg_weight=feature_reg_weight,
+        regularizer_type=regularizer_type,
+        gamma_sigma=gamma_sigma,
+        source_grids=source_grids,
+        grid_mean_predictor=grid_mean_predictor,  # passed so that the multi readout works
+        grid_mean_predictor_type=grid_mean_predictor_type,
     )
 
     if shifter is True:

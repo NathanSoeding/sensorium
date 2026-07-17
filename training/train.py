@@ -2,9 +2,9 @@ import os
 import torch
 import argparse
 
-from sensorium.utility.utils import get_data, set_random_seed
-from sensorium.models.models import stacked_core_full_gauss_readout
-from sensorium.training.trainers import standard_trainer
+from sensorium.utility import get_data, set_random_seed
+from sensorium.models import stacked_core_full_gauss_readout, stacked_core_factorized_readout
+from sensorium.training import standard_trainer
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -18,7 +18,7 @@ def get_parser():
     parser.add_argument('--no_wandb', action='store_true', default=False)
     parser.add_argument('--wandb_run_name', type=str, default='run')
     parser.add_argument('--batch_size', type=int, default=128)
-    parser.add_argument('--whitener', action='store_true', default=False)
+    parser.add_argument('--disable_whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
     parser.add_argument('--readout_type', type=str, default='gaussian')
     parser.add_argument('--more_data', action='store_true', default=False)
@@ -90,17 +90,7 @@ def main():
         'feature_reg_weight': args.feature_reg_weight, # this is the one I actually would like to tune!
         
         'hidden_kern': 7,
-        'grid_mean_predictor': {
-            'type': 'cortex',
-            'input_dimensions': 2,
-            'hidden_layers': 1,
-            'hidden_features': 30,
-            'final_tanh': True
-        },
         
-        'init_sigma': 0.1,
-        'init_mu_range': 0.3,
-        'gauss_type': 'full',
         'shifter': True,
         'shifter_bias': args.shifter_bias,
         'hidden_channels_shifter': args.shifter_features,
@@ -116,10 +106,25 @@ def main():
         # 'kernel_size': args.kernel_size,
         # 'sigma': args.sigma,
         'init_gain': args.init_gain,
-        'whitener': args.whitener,
+        'whitener': not args.disable_whitener,
         'whitener_momentum': args.whitener_momentum,
     }
-    model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
+
+    if args.readout_type == 'gaussian':
+        model_config['grid_mean_predictor'] = {
+            'type': 'cortex',
+            'input_dimensions': 2,
+            'hidden_layers': 1,
+            'hidden_features': 30,
+            'final_tanh': True
+        }
+        model_config['init_sigma'] = 0.1
+        model_config['init_mu_range'] = 0.3
+        model_config['gauss_type'] = 'full'
+        model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
+    
+    if args.readout_type == 'factorized':
+        model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
     print(model)
 
     trainer_config = {

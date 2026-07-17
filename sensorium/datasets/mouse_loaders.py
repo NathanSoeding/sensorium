@@ -302,6 +302,7 @@ def static_loaders(
     inputs_std=None,
     scale: float = None,
     include_eye_position: bool = None,
+    exclude_eye_position_paths: list = None,
     add_eye_pos_as_channels: bool = None,
     include_trial_info_keys: list = None,
     overwrite_data_path: bool = True,
@@ -359,6 +360,7 @@ def static_loaders(
         if (overwrite_data_path) and (os.path.exists(basepath)):
             path = os.path.join(basepath, path)
 
+        include_eye_position = include_eye_position and path not in exclude_eye_position_paths
         out = static_loader(
             path,
             batch_size,

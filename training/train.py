@@ -108,8 +108,6 @@ def main():
         'regularizer_type': 'adaptive_log_norm',
         'gamma_sigma': args.gamma_sigma,
         #'readout_type': args.readout_type,
-        'hidden_channels_shifter': args.shifter_features,
-        'shift_layers': args.shifter_layers,
         # 'discretized_spatial': args.discretized,
         # 'kernel_size': args.kernel_size,
         # 'sigma': args.sigma,
@@ -155,6 +153,15 @@ def main():
         **trainer_config
     )
     torch.save(model.state_dict(), f'{args.output_dir}/model_weights.pth')
+
+    # Save everything needed to reconstruct the model
+    full_config = {
+        'readout_type': args.readout_type,
+        'model_config': model_config,
+        'random_seed': random_seed,
+    }
+    with open(f'{args.output_dir}/model_config.json', 'w') as f:
+        json.dump(full_config, f, indent=2)
 
 if __name__ == "__main__":
     main()

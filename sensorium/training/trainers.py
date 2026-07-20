@@ -40,6 +40,7 @@ def standard_trainer(
     min_lr=0.0001,
     cb=None,
     track_training=False,
+    log_smoothness=False,
     detach_core=False,
     use_wandb=True,
     wandb_project=None,
@@ -93,17 +94,16 @@ def standard_trainer(
             if scale_loss
             else 1.0
         )
-        regularizers = int(
-            not detach_core
-        ) * model.core.regularizer() + model.readout.regularizer(data_key, whitener=model.whitener)
+        core_reg = int(not detach_core) * model.core.regularizer()
+        readout_reg, readout_reg_components = model.readout.regularizer(data_key, whitener=model.whitener)
 
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)
         prediction_loss = loss_scale * criterion(preds, targets)
-        loss = prediction_loss + regularizers
+        loss = prediction_loss + core_reg + readout_reg
 
-        return loss, (prediction_loss, regularizers)
+        return loss, (prediction_loss, core_reg, readout_reg_components)
         
     ##### Model training ####################################################################################################
     model.to(device)
@@ -180,7 +180,9 @@ def standard_trainer(
     ):
         model.train()
         epoch_loss_main = 0.0
-        epoch_loss_reg = 0.0
+        epoch_loss_core_reg = 0.0
+        epoch_loss_feature_reg = 0.0
+        epoch_loss_smoothness_reg = 0.0
         batch_count = 0
 
 
@@ -204,10 +206,13 @@ def standard_trainer(
             )
             loss.backward()
 
-            pred_loss, regularizers = loss_components
+            pred_loss, core_reg, readout_reg_components = loss_components
             with torch.no_grad():
                 epoch_loss_main += pred_loss.item()
-                epoch_loss_reg += regularizers.item()
+                epoch_loss_core_reg += core_reg.item()
+                epoch_loss_feature_reg += readout_reg_components['feature']
+                if log_smoothness:
+                    epoch_loss_smoothness_reg += readout_reg_components['smoothness']
                 batch_count += 1
 
             if (batch_no + 1) % optim_step_count == 0:
@@ -217,7 +222,9 @@ def standard_trainer(
         # Calculate average epoch losses
         if batch_count > 0:
             epoch_loss_main /= batch_count
-            epoch_loss_reg /= batch_count
+            epoch_loss_core_reg /= batch_count
+            epoch_loss_feature_reg /= batch_count
+            epoch_loss_smoothness_reg /= batch_count
 
         # executes callback function if passed in keyword args
         if cb is not None:
@@ -230,9 +237,12 @@ def standard_trainer(
             if wandb_project and use_wandb:
                 wandb_dict = {
                     "Main loss": epoch_loss_main,
-                    "Regularizers": epoch_loss_reg,
+                    "Core Regularizers": epoch_loss_core_reg,
+                    "Feature Regularizers": epoch_loss_feature_reg,
                     "Learning Rate": optimizer.param_groups[0]['lr'],
                 }
+                if log_smoothness:
+                    wandb_dict["Smoothness Regularizers"] = epoch_loss_smoothness_reg
             
             # Log validation metrics from tracker
             for key in tracker.log.keys():

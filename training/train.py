@@ -21,10 +21,15 @@ def get_parser():
     parser.add_argument('--disable_whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
 
-    parser.add_argument('--readout_type', type=str, default='gaussian')
+    parser.add_argument('--readout_type', type=str, default='factorized')
 
     parser.add_argument('--retinotopy_features', type=int, default=30)
     parser.add_argument('--retinotopy_layers', type=int, default=1)
+
+    parser.add_argument('--temp_per_neuron', action='store_true', default=False)
+    parser.add_argument('--readout_kernel_size', type=int, default=7)
+    parser.add_argument('--readout_kernel_sigma', type=float, default=2.0)
+    parser.add_argument('--smoothness_reg_weight', type=float, default=0.0)
 
     parser.add_argument('--more_data', action='store_true', default=False)
     parser.add_argument('--shifter_bias', action='store_true', default=False)
@@ -130,6 +135,10 @@ def main():
         model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
     
     if args.readout_type == 'factorized':
+        model_config['temp_per_neuron'] = args.temp_per_neuron
+        model_config['readout_kernel_size'] = args.readout_kernel_size
+        model_config['readout_kernel_sigma'] = args.readout_kernel_sigma
+        model_config['smoothness_reg_weight'] = args.smoothness_reg_weight
         model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
     print(model)
 
@@ -139,6 +148,7 @@ def main():
         'lr_decay_steps': 4,
         'avg_loss': False,
         'lr_init': 0.009,
+        'log_smoothness': args.smoothness_reg_weight > 0.0,
         'device': device, 
         'wandb_project': 'small readout vectors',
         'wandb_name': args.wandb_run_name,

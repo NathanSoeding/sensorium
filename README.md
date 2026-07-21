@@ -12,35 +12,32 @@ For more information about the competition, vist our [website](https://sensorium
 
 Have a look at our [White paper on arXiv](https://arxiv.org/abs/2206.08666), which describes the dataset and competition in detail.
 
-# Important Dates
-**June 20, 2022**: Start of the competition and data release.
-<br>**Oct 15, 2022**: Submission deadline.
-<br>**Oct 22, 2022**: Validation of all submitted scores completed. Preliminary winners are announced. Rank 1-3 in both competition tracks are contacted to provide the code for their submission.
-<br>**Nov 5, 2022**: Deadline for top-ranked entries to provide the code for their submission.
-<br>**Nov 15, 2022**: Winners contacted to contribute to the competition summary write-up.
-
 # Starter-kit
 
-Below we provide a step-by-step guide for getting started with the competition.
+## Repository setup
 
-## 1. Pre-requisites
-- install [**docker**](https://docs.docker.com/get-docker/) and [**docker-compose**](https://docs.docker.com/compose/install/)
-- install git
-- clone the repo via `git clone https://github.com/sinzlab/sensorium.git`
+Clone both repositories side-by-side:
 
-## 2. Download neural data
+git clone --branch cleanup-sensorium git@github.com:NathanSoeding/sensorium.git
+git clone --branch cleanup-from-upstream git@github.com:NathanSoeding/neuralpredictors.git
 
-You can download the data from [https://gin.g-node.org/cajal/Sensorium2022](https://gin.g-node.org/cajal/Sensorium2022) and place it in `sensorium/notebooks/data`.
-**Note:** Downloading the files all at once as a directory does lead to unfortunate errors. Thus, all datastes have to be downloaded individually.
+Directory structure:
 
-## 3. Run the example notebooks
+parent/
+├── sensorium/
+└── neuralpredictors/
 
-### **Start Jupyterlab environment**
-```
-cd sensorium/
-docker-compose run -d -p 10101:8888 jupyterlab
-```
-now, type in `localhost:10101` in your favorite browser, and you are ready to go!
+Then:
+
+cd sensorium
+uv venv
+source .venv/bin/activate
+uv sync
+uv pip install -e .
+
+Start a run:
+cd training/
+python launcher.py --path runs --name test
 
 
 ## **Competition example notebooks**

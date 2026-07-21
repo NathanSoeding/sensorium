@@ -18,26 +18,26 @@ Have a look at our [White paper on arXiv](https://arxiv.org/abs/2206.08666), whi
 
 Clone both repositories side-by-side:
 
-git clone --branch cleanup-sensorium git@github.com:NathanSoeding/sensorium.git
-git clone --branch cleanup-from-upstream git@github.com:NathanSoeding/neuralpredictors.git
+git clone --branch cleanup-sensorium git@github.com:NathanSoeding/sensorium.git  
+git clone --branch cleanup-from-upstream git@github.com:NathanSoeding/neuralpredictors.git  
 
-Directory structure:
+Directory structure:  
 
-parent/
-├── sensorium/
-└── neuralpredictors/
+parent/  
+├── sensorium/  
+└── neuralpredictors/  
 
-Then:
+Then:  
 
-cd sensorium
-uv venv
-source .venv/bin/activate
-uv sync
-uv pip install -e .
+cd sensorium  
+uv venv  
+source .venv/bin/activate  
+uv sync  
+uv pip install -e .  
 
-Start a run:
-cd training/
-python launcher.py --path runs --name test
+Start a run:  
+cd training/  
+python launcher.py --path runs --name test  
 
 
 ## **Competition example notebooks**

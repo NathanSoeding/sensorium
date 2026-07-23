@@ -15,6 +15,8 @@ from ..utility.scores import get_correlations, get_poisson_loss, get_mean_q, get
 from ..utility.utils import set_random_seed
 
 import wandb
+from sklearn.cluster import KMeans
+from torch.nn import KLDivLoss
 
 
 def standard_trainer(

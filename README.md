@@ -18,7 +18,7 @@ Have a look at our [White paper on arXiv](https://arxiv.org/abs/2206.08666), whi
 
 Clone both repositories side-by-side:
 
-git clone --branch cleanup-sensorium git@github.com:NathanSoeding/sensorium.git  
+git clone --branch whitened_zig git@github.com:NathanSoeding/sensorium.git  
 git clone --branch cleanup-from-upstream git@github.com:NathanSoeding/neuralpredictors.git  
 
 Directory structure:  
@@ -40,11 +40,39 @@ cd training/
 python launcher.py --path runs --name test  
 
 
-## **Competition example notebooks**
-We provide notebooks that illustrate the structure of our data, our baselines models, and how to make a submission to the competition.
-<br>[**Dataset tutorial**](notebooks/dataset_tutorial/): Shows the structure of the data and how to turn it into a PyTorch DataLoader.
-<br>[**Model tutorial**](notebooks/model_tutorial/): How to train and evaluate our baseline models.
-<br>[**Submission tutorial**](notebooks/submission_tutorial/): Use our API to make a submission to our competition.
+## ZIG setup 
 
+The ZIG here is a Zero-Inflated Gamma: a mixture model for a response that's mostly near-zero (no event) with an occasional continuous positive "burst." You can read
+the meaning of each parameter straight off ZIGLoss.get_slab_logl (zero_inflated_losses.py:93-103) and fitted_zig_mean (mean_variance_functions.py:5-9):
 
-If you have any questions, feel free to reach out to us (Contact section on our [website](https://sensorium2022.net/)), or raise an issue here on GitHub!
+- q — mixing weight, P(response is "active"/slab) for this trial. 1-q is the mass on the "spike" (near-zero/no-response) part. This is literally "did the neuron
+respond to this stimulus at all" → directly driven by the image.
+- theta — Gamma scale. Combined with k, the slab mean is k*theta + loc, so theta sets the magnitude of the response when the neuron is active. This is the "how big was
+the response" parameter → directly driven by the image/tuning.
+- k — Gamma shape. Controls the dispersion/skew of the nonzero-response distribution around that mean — i.e. how noisy/variable the response is trial-to-trial given
+that the neuron fired, not how big the response is. More a property of the noise structure than of stimulus content.
+- loc — the location shift, i.e. the boundary between "zero" and "nonzero": zero_mask = target <= loc in the loss. This is effectively the neuron's noise floor (from
+calcium-imaging/deconvolution noise), not something the stimulus should move around.
+
+### How to train ZIG model 
+
+**Step 1**
+```
+python sensorium/utility/gamma_params_from_data.py \
+```
+or 
+```
+python sensorium/utility/gamma_params_from_data.py \
+    --loc_method quantile --loc_quantile 0.01 \
+    --output_dir sensorium/notebooks/data/gamma_params
+```
+Add `--more_data` here if you plan to train on the extra 7 sessions too (must match whatever you pass to train.py in step 2 — the `.npz` files are looked up by session data_key, and a missing one raises immediately). This writes one `sensorium/notebooks/data/gamma_params/<data_key>_gamma_params.npz` per session.
+
+**Step 2**
+```
+cd training
+python launcher.py --path runs --name zig_test \
+    --readout_type zig \
+    --use_zig_loss \
+    --gamma_params_dir ../data/gamma_params
+```

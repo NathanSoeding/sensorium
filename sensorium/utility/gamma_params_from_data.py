@@ -91,7 +91,7 @@ def get_parser():
     parser.add_argument("--loc_constant", type=float, default=None)
     parser.add_argument("--max_value", type=float, default=None)
 
-    parser.add_argument("--output_dir", type=str, default="sensorium/notebooks/data/gamma_params")
+    parser.add_argument("--output_dir", type=str, default="/user/turishcheva/nathans_code/sensorium/data/gamma_params")
     return parser
 
 

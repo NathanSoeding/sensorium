@@ -5,6 +5,7 @@ import argparse
 
 from sensorium.utility import get_data, set_random_seed
 from sensorium.models import stacked_core_full_gauss_readout, stacked_core_factorized_readout
+from sensorium.models.zig_model import stacked_core_zig_gauss_readout
 from sensorium.training import standard_trainer
 
 def get_parser():
@@ -42,7 +43,10 @@ def get_parser():
     parser.add_argument('--cluster_number', type=int, default=10)
     parser.add_argument('--dec_starting_epoch', type=int, default=10)
     parser.add_argument('--base_multiplier', type=float, default=4e3)
-    
+
+    parser.add_argument('--use_zig_loss', action='store_true', default=False)
+    parser.add_argument('--gamma_params_dir', type=str, default='sensorium/notebooks/data/gamma_params')
+
     return parser
 
 def main():
@@ -146,6 +150,20 @@ def main():
         model_config['readout_kernel_sigma'] = args.readout_kernel_sigma
         model_config['smoothness_reg_weight'] = args.smoothness_reg_weight
         model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
+
+    if args.readout_type == 'zig':
+        model_config['grid_mean_predictor'] = {
+            'type': 'cortex',
+            'input_dimensions': 2,
+            'hidden_layers': args.retinotopy_layers,
+            'hidden_features': args.retinotopy_features,
+            'final_tanh': True
+        }
+        model_config['init_sigma'] = 0.1
+        model_config['init_mu_range'] = 0.3
+        model_config['gauss_type'] = 'full'
+        model_config['gamma_params_dir'] = args.gamma_params_dir
+        model = stacked_core_zig_gauss_readout(dataloaders, random_seed, **model_config)
     print(model)
 
     trainer_config = {
@@ -164,6 +182,8 @@ def main():
         'cluster_number': args.cluster_number,
         'dec_starting_epoch': args.dec_starting_epoch,
         'base_multiplier': args.base_multiplier,
+
+        'use_zig_loss': args.use_zig_loss,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
     validation_score, trainer_output, state_dict = standard_trainer(

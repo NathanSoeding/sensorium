@@ -47,11 +47,15 @@ def model_predictions(model, dataloader, data_key, device="cpu"):
 
         with torch.no_grad():
             with device_state(model, device):
+                # models exposing `predict_mean` (e.g. ZIGEncoder) return a tuple of
+                # distribution parameters from `forward()` directly; route through
+                # `predict_mean` instead to get a single per-neuron rate tensor.
+                predict_fn = model.predict_mean if hasattr(model, "predict_mean") else model
                 output = torch.cat(
                     (
                         output,
                         (
-                            model(images.to(device), data_key=data_key, **batch_kwargs)
+                            predict_fn(images.to(device), data_key=data_key, **batch_kwargs)
                             .detach()
                             .cpu()
                         ),
@@ -61,6 +65,38 @@ def model_predictions(model, dataloader, data_key, device="cpu"):
             target = torch.cat((target, responses.detach().cpu()), dim=0)
 
     return target.numpy(), output.numpy()
+
+
+def _zig_mean_param(model, dataloaders, param_index, device="cpu", per_neuron=False):
+    """
+    Average value of one of a ZIGEncoder's raw `forward()` outputs `(theta, k, loc, q)`
+    (selected via `param_index`) over the given dataloaders, per neuron.
+    """
+    per_session_means = {}
+    for data_key, dataloader in dataloaders.items():
+        collected = torch.empty(0)
+        for batch in dataloader:
+            images = batch[0] if not isinstance(batch, dict) else batch["inputs"]
+            batch_kwargs = batch._asdict() if not isinstance(batch, dict) else batch
+
+            with torch.no_grad():
+                with device_state(model, device):
+                    param = model(images.to(device), data_key=data_key, **batch_kwargs)[param_index]
+                collected = torch.cat((collected, param.detach().cpu()), dim=0)
+        per_session_means[data_key] = collected.numpy().mean(axis=0)
+
+    values = np.hstack([v for v in per_session_means.values()])
+    return values if per_neuron else values.mean()
+
+
+def get_mean_q(model, dataloaders, device="cpu", per_neuron=False):
+    """Average predicted ZIG activation probability `q` over the given dataloaders."""
+    return _zig_mean_param(model, dataloaders, param_index=3, device=device, per_neuron=per_neuron)
+
+
+def get_mean_theta(model, dataloaders, device="cpu", per_neuron=False):
+    """Average predicted ZIG Gamma scale `theta` over the given dataloaders."""
+    return _zig_mean_param(model, dataloaders, param_index=0, device=device, per_neuron=per_neuron)
 
 
 def get_correlations(

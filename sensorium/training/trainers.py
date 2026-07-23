@@ -4,13 +4,14 @@ import torch
 from tqdm import tqdm
 
 from neuralpredictors.measures import modules
+from neuralpredictors.measures import ZIGLoss
 from neuralpredictors.training import (
     early_stopping,
     MultipleObjectiveTracker,
     LongCycler,
 )
 from ..utility import scores
-from ..utility.scores import get_correlations, get_poisson_loss
+from ..utility.scores import get_correlations, get_poisson_loss, get_mean_q, get_mean_theta
 from ..utility.utils import set_random_seed
 
 import wandb
@@ -23,6 +24,7 @@ def standard_trainer(
     avg_loss=False,
     scale_loss=True,
     loss_function="PoissonLoss",
+    use_zig_loss=False,
     stop_function="get_correlations",
     loss_accum_batch_n=None,
     device="cuda",
@@ -92,6 +94,9 @@ def standard_trainer(
     Returns:
 
     """
+    assert not (
+        include_kldivergence and use_zig_loss
+    ), "include_kldivergence and use_zig_loss cannot both be True"
 # --------------
 # Nina's code from https://github.com/Nisone2000/DECEMber/blob/main/sensorium/training/trainers.py
 # --------------
@@ -197,6 +202,22 @@ def standard_trainer(
             config=wandb_config or {},
             name=wandb_name,
         )
+        if use_zig_loss:
+            # one-time run metadata (not a per-epoch metric, hence `summary` not `log`):
+            # sanity-check the precomputed, frozen per-neuron loc/k that gamma_params_from_data.py produced.
+            with torch.no_grad():
+                all_loc = torch.cat([model.loc_nl(v).flatten() for v in model.logloc.values()])
+                all_k = torch.cat([model.k_nl(v).flatten() for v in model.logk.values()])
+            wandb.run.summary.update({
+                "gamma_params/loc_mean": all_loc.mean().item(),
+                "gamma_params/loc_median": all_loc.median().item(),
+                "gamma_params/loc_min": all_loc.min().item(),
+                "gamma_params/loc_max": all_loc.max().item(),
+                "gamma_params/k_mean": all_k.mean().item(),
+                "gamma_params/k_median": all_k.median().item(),
+                "gamma_params/k_min": all_k.min().item(),
+                "gamma_params/k_max": all_k.max().item(),
+            })
 
     def full_objective(model, dataloader, data_key, *args, **kwargs):
 
@@ -206,12 +227,19 @@ def standard_trainer(
             else 1.0
         )
         core_reg = int(not detach_core) * model.core.regularizer()
-        readout_reg, readout_reg_components = model.readout.regularizer(data_key, whitener=model.whitener)
+        whitener = getattr(model, "whitener", None)
+        reg_result = model.readout.regularizer(data_key, whitener=whitener)
+        if isinstance(reg_result, tuple):
+            readout_reg, readout_reg_components = reg_result
+        else:
+            readout_reg, readout_reg_components = reg_result, {"feature": reg_result, "smoothness": 0}
 
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)
-        prediction_loss = loss_scale * criterion(preds, targets)
+        prediction_loss = loss_scale * (
+            criterion(targets, preds) if use_zig_loss else criterion(preds, targets)
+        )
         loss = prediction_loss + core_reg + readout_reg
 
         return loss, (prediction_loss, core_reg, readout_reg_components)
@@ -226,7 +254,7 @@ def standard_trainer(
         size_average=False
     )  # losses are summed for each minibatch
 
-    criterion = getattr(modules, loss_function)(avg=avg_loss)
+    criterion = ZIGLoss(avg=avg_loss) if use_zig_loss else getattr(modules, loss_function)(avg=avg_loss)
     stop_closure = partial(
         getattr(scores, stop_function),
         dataloaders=dataloaders["validation"],
@@ -282,6 +310,9 @@ def standard_trainer(
                 avg=False,
             ),
         )
+        if use_zig_loss:
+            tracker_dict["mean_q"] = partial(get_mean_q, model, dataloaders["validation"], device=device)
+            tracker_dict["mean_theta"] = partial(get_mean_theta, model, dataloaders["validation"], device=device)
         if hasattr(model, "tracked_values"):
             tracker_dict.update(model.tracked_values)
         tracker = MultipleObjectiveTracker(**tracker_dict)

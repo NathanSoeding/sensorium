@@ -37,6 +37,11 @@ def get_parser():
     parser.add_argument('--shifter_features', type=int, default=5)
     parser.add_argument('--shifter_layers', type=int, default=1)
     parser.add_argument('--init_gain', type=float, default=0.1)
+
+    parser.add_argument('--include_kldivergence', action='store_true', default=False)
+    parser.add_argument('--cluster_number', type=int, default=10)
+    parser.add_argument('--dec_starting_epoch', type=int, default=10)
+    parser.add_argument('--base_multiplier', type=float, default=4e3)
     
     return parser
 
@@ -154,9 +159,13 @@ def main():
         'wandb_project': 'small readout vectors',
         'wandb_name': args.wandb_run_name,
         'use_wandb': use_wandb, 
+
+        'include_kldivergence': args.include_kldivergence,
+        'cluster_number': args.cluster_number,
+        'dec_starting_epoch': args.dec_starting_epoch,
+        'base_multiplier': args.base_multiplier,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
-
     validation_score, trainer_output, state_dict = standard_trainer(
         model, 
         dataloaders, 
@@ -164,6 +173,8 @@ def main():
         **trainer_config
     )
     torch.save(model.state_dict(), f'{args.output_dir}/model_weights.pth')
+    with open(f'{args.output_dir}output_dict.pkl', 'wb') as f:
+        pickle.dump(trainer_output, f)
 
     # Save everything needed to reconstruct the model
     full_config = {

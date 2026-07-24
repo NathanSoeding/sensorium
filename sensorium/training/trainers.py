@@ -57,10 +57,8 @@ def standard_trainer(
     dec_starting_epoch=1,
     kmeans_init=20,
     base_multiplier=4e3,
-    use_diag_cov=True,
     learn_alpha=False,
     exponent=2,
-    load_pretrain=False,
     include_mixingcoefficients=False,
     # end of Nina's params
     **kwargs
@@ -170,32 +168,6 @@ def standard_trainer(
         sigma = torch.clamp(sigma, min=1e-4, max=1e4)
 
         return cluster_centers, sigma, mixing_coefficients
-
-    def EM_t_1D(features, resp, cluster_centers, taus, alpha, d=1):
-        norm_squared = torch.sum(
-            (features.T.unsqueeze(1) - cluster_centers.unsqueeze(0)) ** 2, dim=2
-        )
-        u = (alpha + d) / (
-            alpha + norm_squared * (taus ** (-1))
-        ) 
-
-        """ M step """
-        numerator = torch.matmul(features, resp * u).T.detach()
-        denominator = torch.sum(resp * u, dim=0, keepdim=True).T.detach()
-        cluster_centers = numerator / denominator
-
-        weighted_sums = torch.sum(resp * u * norm_squared, dim=0)
-        taus = (weighted_sums / torch.sum(resp, dim=0, keepdim=True)).detach()
-        return cluster_centers, taus
-
-    def soft_assignments_1D(encoded_features, cluster_centers, tau, alpha=1):
-        norm_squared = torch.sum(
-            (encoded_features.T.unsqueeze(1) - cluster_centers.unsqueeze(0)) ** 2, 2
-        )
-        assignments = 1.0 / (1.0 + (norm_squared / (alpha * tau)))
-        assignments = (assignments ** ((alpha + 1) / 2)) / (tau**1 / 2)
-        print("Assignments ", assignments)
-        return assignments / torch.sum(assignments, dim=1, keepdim=True)
 
 # --------------
     if wandb_project and use_wandb:
@@ -322,6 +294,7 @@ def standard_trainer(
         tracker = None
 
     # train over epochs
+    kldiv_list = []
     for epoch, val_obj in early_stopping(
         model,
         stop_closure,
@@ -354,32 +327,20 @@ def standard_trainer(
             cluster_centers = torch.tensor(
                 kmeans.cluster_centers_, dtype=torch.float, device=device
             )
-            if use_diag_cov:
-                p = features.shape[1]
-                sigma = torch.zeros((cluster_number, p), device=device)
-                for k in range(cluster_number):
-                    cluster_points = torch.from_numpy(features[predicted == k]).to(
-                        device
-                    )
-                    if len(cluster_points) > 1:
+            p = features.shape[1]
+            sigma = torch.zeros((cluster_number, p), device=device)
+            for k in range(cluster_number):
+                cluster_points = torch.from_numpy(features[predicted == k]).to(
+                    device
+                )
+                if len(cluster_points) > 1:
 
-                        sigma[k] = (
-                            torch.var(cluster_points, dim=0, unbiased=True) + 1e-6
-                        )
-                    else:
-                        sigma[k] = torch.full_like(cluster_points[0], 1e-6)
-                mixing_coefficients = torch.ones(cluster_number, device=device, requires_grad=False) / cluster_number
-            else:
-                sigma = torch.zeros(cluster_number, device=device)
-                for k in range(cluster_number):
-                    cluster_points = torch.from_numpy(features[predicted == k]).to(
-                        device
+                    sigma[k] = (
+                        torch.var(cluster_points, dim=0, unbiased=True) + 1e-6
                     )
-                    if len(cluster_points) > 0:
-                        sigma[k] = torch.mean(
-                            torch.sum((cluster_points - cluster_centers[k]) ** 2, 1)
-                        )
-                sigma = sigma.unsqueeze(0)
+                else:
+                    sigma[k] = torch.full_like(cluster_points[0], 1e-6)
+            mixing_coefficients = torch.ones(cluster_number, device=device, requires_grad=False) / cluster_number
 
             if learn_alpha:
                 raw_alpha.data = torch.tensor(1.0, dtype=torch.float, device=device)
@@ -392,6 +353,7 @@ def standard_trainer(
         epoch_loss_kldiv = 0
         epoch_loss_kldiv_without_scaling = 0
         batch_count = 0
+        kldiv_step_count = 0
 
 
         # train over batches
@@ -436,20 +398,15 @@ def standard_trainer(
                     feature_list = torch.cat(feature_list, dim=1)
                     if learn_alpha:
                         alpha = torch.nn.functional.softplus(raw_alpha) + 0.1
-                    if use_diag_cov:
-                        if include_mixingcoefficients:
-                            q = soft_assignments_mult(
-                                feature_list, cluster_centers, sigma, alpha, p, mixing_coefficients
-                            )
-                        else:
-                            q = soft_assignments_mult(
-                                feature_list, cluster_centers, sigma, alpha, p
-                            )
-                    else:
-                        q = soft_assignments_1D(
-                            feature_list, cluster_centers, sigma, alpha
+                    if include_mixingcoefficients:
+                        q = soft_assignments_mult(
+                            feature_list, cluster_centers, sigma, alpha, p, mixing_coefficients
                         )
-                
+                    else:
+                        q = soft_assignments_mult(
+                            feature_list, cluster_centers, sigma, alpha, p
+                        )
+
                     q = q.clamp(min=1e-8)
                     target = target_distribution(q, exponent)
                     target = target.clamp(min=1e-8)
@@ -462,7 +419,8 @@ def standard_trainer(
                     epoch_loss_kldiv_without_scaling += (
                         kldiv_loss.detach() / get_multiplier(epoch, base_multiplier)
                     )
-                    epoch_loss += kldiv_loss.detach()
+                    kldiv_step_count += 1
+                    # epoch_loss += kldiv_loss.detach()
 
                     with torch.no_grad():
                         cluster_centers_list.append(cluster_centers.cpu().detach())
@@ -470,14 +428,9 @@ def standard_trainer(
                             kldiv_loss.cpu() / get_multiplier(epoch, base_multiplier)
                         )
 
-                    if use_diag_cov:
-                        cluster_centers, sigma, mixing_coefficients = EM_t_mult(
-                            feature_list, q, cluster_centers, sigma, alpha, p
-                        )
-                    else:
-                        cluster_centers, sigma = EM_t_1D(
-                            feature_list, q, cluster_centers, sigma, alpha
-                        )
+                    cluster_centers, sigma, mixing_coefficients = EM_t_mult(
+                        feature_list, q, cluster_centers, sigma, alpha, p
+                    )
 
                 optimizer.step()
                 optimizer.zero_grad()
@@ -488,6 +441,9 @@ def standard_trainer(
             epoch_loss_core_reg /= batch_count
             epoch_loss_feature_reg /= batch_count
             epoch_loss_smoothness_reg /= batch_count
+        if kldiv_step_count > 0:
+            epoch_loss_kldiv /= kldiv_step_count
+            epoch_loss_kldiv_without_scaling /= kldiv_step_count
 
         # executes callback function if passed in keyword args
         if cb is not None:
@@ -506,7 +462,10 @@ def standard_trainer(
                 }
                 if log_smoothness:
                     wandb_dict["Smoothness Regularizers"] = epoch_loss_smoothness_reg
-            
+                if include_kldivergence:
+                    wandb_dict["KL Divergence Loss"] = float(epoch_loss_kldiv)
+                    wandb_dict["KL Divergence Loss (unscaled)"] = float(epoch_loss_kldiv_without_scaling)
+
             # Log validation metrics from tracker
             for key in tracker.log.keys():
                 key_val = tracker.log[key][-1]

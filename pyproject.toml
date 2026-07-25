@@ -25,6 +25,7 @@ dependencies = [
     "idna==3.18",
     "imageio==2.37.3",
     "imagesize==2.0.0",
+    "ipykernel>=7.3.0",
     "jinja2==3.1.6",
     "kiwisolver==1.5.0",
     "lazy-loader==0.5",

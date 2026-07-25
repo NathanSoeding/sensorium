@@ -121,6 +121,16 @@ def standard_trainer(
         weight = (batch**exponent) / torch.sum(batch, 0)
         return (weight.t() / torch.sum(weight, 1)).t()
 
+    def _canonicalize_features(features, outdims):
+        """
+        Nina's DEC-clustering code assumes readout.features (after squeeze) is (channels,
+        outdims) -- true for FullGaussian2d but not Factorized2d, whose features are stored
+        (outdims, channels). Returns features as (outdims, channels) regardless of the
+        underlying readout's storage convention.
+        """
+        features = features.squeeze()
+        return features if features.shape[0] == outdims else features.T
+
     def soft_assignments_mult(encoded_features, cluster_centers, sigma, alpha, p=1, mixing_coefficients=None):
         """Calculates the q_ij as the t mixture components. Moves to log space to avoid numerical issues."""
         sigma_inv = 1.0 / sigma  # (K, D)
@@ -319,7 +329,7 @@ def standard_trainer(
             # form initial cluster centres
             with torch.no_grad():
                 for i,(k,readout) in enumerate(model.readout.items()):
-                    features = readout.features.cpu().detach().squeeze().T.numpy()
+                    features = _canonicalize_features(readout.features.cpu().detach(), readout.outdims).numpy()
                     feature_list.append(np.array(features))
 
                 features = np.vstack(feature_list)
@@ -391,7 +401,7 @@ def standard_trainer(
                     kldiv_loss = torch.zeros(1).to(device)
                     feature_list = []
                     for i, (k, readout) in enumerate(model.readout.items()):
-                        features = readout.features.squeeze()
+                        features = _canonicalize_features(readout.features, readout.outdims).T
                         feature_list.append(features)
 
                     # features_subset = torch.cat(features_subset, dim=1)
@@ -481,7 +491,7 @@ def standard_trainer(
     if include_kldivergence:
         soft_assignments_list = []
         for i,(k, readout) in enumerate(model.readout.items()):
-            features = readout.features.detach().squeeze()
+            features = _canonicalize_features(readout.features.detach(), readout.outdims).T
             if include_mixingcoefficients:
                 soft_assignments_list.append(
                     soft_assignments_mult(features, cluster_centers, sigma, alpha, p, mixing_coefficients)

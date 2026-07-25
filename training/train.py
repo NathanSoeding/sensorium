@@ -7,6 +7,7 @@ from sensorium.utility import get_data, set_random_seed
 from sensorium.models import stacked_core_full_gauss_readout, stacked_core_factorized_readout
 from sensorium.models.zig_model import stacked_core_zig_gauss_readout
 from sensorium.training import standard_trainer
+import pickle
 
 def get_parser():
     parser = argparse.ArgumentParser()
@@ -64,22 +65,30 @@ def main():
 
     basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
     # as filenames, we'll select all 7 datasets
+    # filenames = [
+    #     os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
+    # ]
+
     filenames = [
-        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
+        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
     ]
 
     if args.more_data:
         more_basepath = "/user/turishcheva/more_data_like_sensorium_2022"
+        # we should exclude mouse 20892 since it has not only V1 but also other areas!
+        # We also excluded mouse 20622 since it has data from L4 and not L2/3 as all the other mice
         for file in [
             "static20457-5-9-94c6ff995dac583098847cfecd43e7b6",
-            "static20622-2-14-94c6ff995dac583098847cfecd43e7b6",
-            "static20892-10-10-94c6ff995dac583098847cfecd43e7b6",
+            # "static20622-2-14-94c6ff995dac583098847cfecd43e7b6",
+            # "static20892-10-10-94c6ff995dac583098847cfecd43e7b6",
             "static22223-2-15-94c6ff995dac583098847cfecd43e7b6",
             "static22564-2-12-94c6ff995dac583098847cfecd43e7b6",
             "static22620-4-15-94c6ff995dac583098847cfecd43e7b6",
             "static23555-5-12-94c6ff995dac583098847cfecd43e7b6",
         ]:
             filenames.append(os.path.join(more_basepath, file))
+
+    print(len(filenames), filenames)
 
     dataset_fn = "sensorium.datasets.static_loaders"
     dataset_config = {
@@ -193,7 +202,7 @@ def main():
         **trainer_config
     )
     torch.save(model.state_dict(), f'{args.output_dir}/model_weights.pth')
-    with open(f'{args.output_dir}output_dict.pkl', 'wb') as f:
+    with open(f'{args.output_dir}/output_dict.pkl', 'wb') as f:
         pickle.dump(trainer_output, f)
 
     # Save everything needed to reconstruct the model

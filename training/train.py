@@ -5,7 +5,7 @@ import argparse
 
 from sensorium.utility import get_data, set_random_seed
 from sensorium.models import stacked_core_full_gauss_readout, stacked_core_factorized_readout
-from sensorium.models.zig_model import stacked_core_zig_gauss_readout
+from sensorium.models.zig_model import stacked_core_zig_gauss_readout, stacked_core_zig_factorized_readout
 from sensorium.training import standard_trainer
 import pickle
 
@@ -46,7 +46,7 @@ def get_parser():
     parser.add_argument('--base_multiplier', type=float, default=4e3)
 
     parser.add_argument('--use_zig_loss', action='store_true', default=False)
-    parser.add_argument('--gamma_params_dir', type=str, default='sensorium/notebooks/data/gamma_params')
+    parser.add_argument('--gamma_params_dir', type=str, default='sensorium/data/gamma_params')
 
     return parser
 
@@ -65,13 +65,13 @@ def main():
 
     basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
     # as filenames, we'll select all 7 datasets
-    # filenames = [
-    #     os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
-    # ]
-
     filenames = [
-        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
+        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
     ]
+
+    # filenames = [
+    #     os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
+    # ]
 
     if args.more_data:
         more_basepath = "/user/turishcheva/more_data_like_sensorium_2022"
@@ -79,7 +79,7 @@ def main():
         # We also excluded mouse 20622 since it has data from L4 and not L2/3 as all the other mice
         for file in [
             "static20457-5-9-94c6ff995dac583098847cfecd43e7b6",
-            # "static20622-2-14-94c6ff995dac583098847cfecd43e7b6",
+            # "static20622-2-14-94c6ff995dac583098847cfecd43e7b6", 
             # "static20892-10-10-94c6ff995dac583098847cfecd43e7b6",
             "static22223-2-15-94c6ff995dac583098847cfecd43e7b6",
             "static22564-2-12-94c6ff995dac583098847cfecd43e7b6",
@@ -173,6 +173,14 @@ def main():
         model_config['gauss_type'] = 'full'
         model_config['gamma_params_dir'] = args.gamma_params_dir
         model = stacked_core_zig_gauss_readout(dataloaders, random_seed, **model_config)
+
+    if args.readout_type == 'zig_factorized':
+        model_config['temp_per_neuron'] = args.temp_per_neuron
+        model_config['readout_kernel_size'] = args.readout_kernel_size
+        model_config['readout_kernel_sigma'] = args.readout_kernel_sigma
+        model_config['smoothness_reg_weight'] = args.smoothness_reg_weight
+        model_config['gamma_params_dir'] = args.gamma_params_dir
+        model = stacked_core_zig_factorized_readout(dataloaders, random_seed, **model_config)
     print(model)
 
     trainer_config = {

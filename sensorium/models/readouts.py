@@ -3,6 +3,7 @@ from neuralpredictors.layers.readouts import (
     FullGaussian2d,
     Factorized2d,
     GeneralizedFullGaussianReadout2d,
+    GeneralizedFactorized2d,
 )
 
 
@@ -14,3 +15,6 @@ class MultipleFactorized2d(MultiReadoutSharedParametersBase):
 
 class MultipleGeneralizedFullGaussian2d(MultiReadoutSharedParametersBase):
     _base_readout = GeneralizedFullGaussianReadout2d
+
+class MultipleGeneralizedFactorized2d(MultiReadoutSharedParametersBase):
+    _base_readout = GeneralizedFactorized2d

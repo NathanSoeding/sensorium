@@ -61,6 +61,9 @@ def standard_trainer(
     exponent=2,
     include_mixingcoefficients=False,
     # end of Nina's params
+    # dedup-aware DEC clustering (see sensorium.utility.dedup)
+    dedup_mode=None,
+    dedup_info=None,
     **kwargs
 ):
     """
@@ -130,6 +133,26 @@ def standard_trainer(
         """
         features = features.squeeze()
         return features if features.shape[0] == outdims else features.T
+
+    def pool_features(features, info, mode):
+        """Pools a session's per-neuron feature matrix (n_neurons, D) down to one row per
+        dedup group (n_groups, D), so duplicate z-plane copies of the same physical cell don't
+        each get an independent vote in the DEC clustering computation.
+
+        mode='mean': differentiable group-mean (gradient split evenly across group members).
+        mode='random_representative': re-sampled every call, one random member stands in for
+        its group (vectorized gather, no python loop).
+        """
+        if mode == "mean":
+            pooled = torch.zeros(info["n_groups"], features.shape[1], device=features.device, dtype=features.dtype)
+            pooled.index_add_(0, info["group_id"], features)
+            return pooled / info["group_sizes"].unsqueeze(1).to(pooled.dtype)
+        elif mode == "random_representative":
+            col = (torch.rand(info["n_groups"], device=features.device) * info["group_sizes"]).long()
+            chosen = info["group_members_padded"][torch.arange(info["n_groups"], device=features.device), col]
+            return features[chosen]
+        else:
+            raise ValueError(f"Unknown dedup_mode: {mode}")
 
     def soft_assignments_mult(encoded_features, cluster_centers, sigma, alpha, p=1, mixing_coefficients=None):
         """Calculates the q_ij as the t mixture components. Moves to log space to avoid numerical issues."""
@@ -329,8 +352,10 @@ def standard_trainer(
             # form initial cluster centres
             with torch.no_grad():
                 for i,(k,readout) in enumerate(model.readout.items()):
-                    features = _canonicalize_features(readout.features.cpu().detach(), readout.outdims).numpy()
-                    feature_list.append(np.array(features))
+                    features = _canonicalize_features(readout.features.detach(), readout.outdims)
+                    if dedup_mode is not None:
+                        features = pool_features(features, dedup_info[k], dedup_mode)
+                    feature_list.append(features.cpu().numpy())
 
                 features = np.vstack(feature_list)
                 predicted = kmeans.fit_predict(features)
@@ -401,8 +426,10 @@ def standard_trainer(
                     kldiv_loss = torch.zeros(1).to(device)
                     feature_list = []
                     for i, (k, readout) in enumerate(model.readout.items()):
-                        features = _canonicalize_features(readout.features, readout.outdims).T
-                        feature_list.append(features)
+                        features = _canonicalize_features(readout.features, readout.outdims)
+                        if dedup_mode is not None:
+                            features = pool_features(features, dedup_info[k], dedup_mode)
+                        feature_list.append(features.T)
 
                     # features_subset = torch.cat(features_subset, dim=1)
                     feature_list = torch.cat(feature_list, dim=1)

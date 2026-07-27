@@ -3,7 +3,7 @@ import json
 import torch
 import argparse
 
-from sensorium.utility import get_data, set_random_seed
+from sensorium.utility import get_data, set_random_seed, build_dedup_tensors
 from sensorium.models import stacked_core_full_gauss_readout, stacked_core_factorized_readout
 from sensorium.models.zig_model import stacked_core_zig_gauss_readout, stacked_core_zig_factorized_readout
 from sensorium.training import standard_trainer
@@ -44,6 +44,7 @@ def get_parser():
     parser.add_argument('--cluster_number', type=int, default=10)
     parser.add_argument('--dec_starting_epoch', type=int, default=10)
     parser.add_argument('--base_multiplier', type=float, default=4e3)
+    parser.add_argument('--dedup_mode', type=str, choices=['none', 'mean', 'random_representative'], default='none')
 
     parser.add_argument('--use_zig_loss', action='store_true', default=False)
     parser.add_argument('--gamma_params_dir', type=str, default='sensorium/data/gamma_params')
@@ -65,13 +66,15 @@ def main():
 
     basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
     # as filenames, we'll select all 7 datasets
-    filenames = [
-        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
-    ]
-
-    # filenames = [
-    #     os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
-    # ]
+    
+    if args.more_data:
+        filenames = [
+            os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
+        ]
+    else:
+        filenames = [
+            os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
+        ]
 
     if args.more_data:
         more_basepath = "/user/turishcheva/more_data_like_sensorium_2022"
@@ -203,6 +206,12 @@ def main():
         'use_zig_loss': args.use_zig_loss,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
+
+    if args.include_kldivergence and args.dedup_mode != 'none':
+        # kept out of wandb_config above: dedup_info is a large per-session tensor dict, not
+        # small serializable run metadata
+        trainer_config['dedup_mode'] = args.dedup_mode
+        trainer_config['dedup_info'] = build_dedup_tensors(list(dataloaders['train'].keys()), device)
     validation_score, trainer_output, state_dict = standard_trainer(
         model, 
         dataloaders, 

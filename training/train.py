@@ -45,9 +45,12 @@ def get_parser():
     parser.add_argument('--dec_starting_epoch', type=int, default=10)
     parser.add_argument('--base_multiplier', type=float, default=4e3)
     parser.add_argument('--dedup_mode', type=str, choices=['none', 'mean', 'random_representative'], default='none')
+    parser.add_argument('--kl_after_whitening', action='store_true', default=False)
 
     parser.add_argument('--use_zig_loss', action='store_true', default=False)
     parser.add_argument('--gamma_params_dir', type=str, default='sensorium/data/gamma_params')
+
+    parser.add_argument('--lr_init', type=float, default=0.009)
 
     return parser
 
@@ -191,7 +194,7 @@ def main():
         'verbose': False,
         'lr_decay_steps': 4,
         'avg_loss': False,
-        'lr_init': 0.009,
+        'lr_init': args.lr_init,
         'log_smoothness': args.smoothness_reg_weight > 0.0,
         'device': device, 
         'wandb_project': 'small readout vectors',
@@ -202,6 +205,7 @@ def main():
         'cluster_number': args.cluster_number,
         'dec_starting_epoch': args.dec_starting_epoch,
         'base_multiplier': args.base_multiplier,
+        'kl_after_whitening': args.kl_after_whitening,
 
         'use_zig_loss': args.use_zig_loss,
     }

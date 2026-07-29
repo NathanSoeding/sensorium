@@ -64,6 +64,8 @@ def standard_trainer(
     # dedup-aware DEC clustering (see sensorium.utility.dedup)
     dedup_mode=None,
     dedup_info=None,
+    # whiten readout features before DEC clustering (see model.whitener)
+    kl_after_whitening=False,
     **kwargs
 ):
     """
@@ -100,6 +102,11 @@ def standard_trainer(
     assert not (
         include_kldivergence and use_zig_loss
     ), "include_kldivergence and use_zig_loss cannot both be True"
+    if kl_after_whitening:
+        assert getattr(model, "whitener", None) is not None, (
+            "kl_after_whitening=True requires the model to have a whitener "
+            "(train with whitener=True / without --disable_whitener)"
+        )
 # --------------
 # Nina's code from https://github.com/Nisone2000/DECEMber/blob/main/sensorium/training/trainers.py
 # --------------
@@ -133,6 +140,15 @@ def standard_trainer(
         """
         features = features.squeeze()
         return features if features.shape[0] == outdims else features.T
+
+    def _maybe_whiten(features):
+        """features: (outdims, channels). When kl_after_whitening, applies the same
+        weight-whitening transform used for the whitened feature regularizer
+        (model.whitener.transform_weights), so DEC clustering operates in the whitener's
+        decorrelated channel space instead of the raw readout feature space."""
+        if not kl_after_whitening:
+            return features
+        return model.whitener.transform_weights(features.T).T
 
     def pool_features(features, info, mode):
         """Pools a session's per-neuron feature matrix (n_neurons, D) down to one row per
@@ -353,6 +369,7 @@ def standard_trainer(
             with torch.no_grad():
                 for i,(k,readout) in enumerate(model.readout.items()):
                     features = _canonicalize_features(readout.features.detach(), readout.outdims)
+                    features = _maybe_whiten(features)
                     if dedup_mode is not None:
                         features = pool_features(features, dedup_info[k], dedup_mode)
                     feature_list.append(features.cpu().numpy())
@@ -427,6 +444,7 @@ def standard_trainer(
                     feature_list = []
                     for i, (k, readout) in enumerate(model.readout.items()):
                         features = _canonicalize_features(readout.features, readout.outdims)
+                        features = _maybe_whiten(features)
                         if dedup_mode is not None:
                             features = pool_features(features, dedup_info[k], dedup_mode)
                         feature_list.append(features.T)
@@ -516,18 +534,31 @@ def standard_trainer(
     ##### Model evaluation ####################################################################################################
     model.eval()
     if include_kldivergence:
-        soft_assignments_list = []
+        predicted_list = []
         for i,(k, readout) in enumerate(model.readout.items()):
-            features = _canonicalize_features(readout.features.detach(), readout.outdims).T
-            if include_mixingcoefficients:
-                soft_assignments_list.append(
-                    soft_assignments_mult(features, cluster_centers, sigma, alpha, p, mixing_coefficients)
-                )
+            features = _canonicalize_features(readout.features.detach(), readout.outdims)
+            features = _maybe_whiten(features)
+            if dedup_mode is not None:
+                # Assign a single label per dedup group (from its pooled/representative
+                # features), then broadcast that same label to every neuron in the group --
+                # so duplicates share a label by construction, not just by emergent training
+                # convergence. group_id maps each neuron -> its group index (see build_dedup_tensors),
+                # so group_labels[group_id] re-expands group-level labels back to per-neuron order.
+                pooled = pool_features(features, dedup_info[k], dedup_mode).T
+                if include_mixingcoefficients:
+                    q_groups = soft_assignments_mult(pooled, cluster_centers, sigma, alpha, p, mixing_coefficients)
+                else:
+                    q_groups = soft_assignments_mult(pooled, cluster_centers, sigma, alpha, p)
+                group_labels = q_groups.max(1)[1]
+                predicted_list.append(group_labels[dedup_info[k]["group_id"]])
             else:
-                soft_assignments_list.append(
-                    soft_assignments_mult(features, cluster_centers, sigma, alpha, p)
-                ) 
-        predicted = torch.cat(soft_assignments_list).max(1)[1]
+                features = features.T
+                if include_mixingcoefficients:
+                    q = soft_assignments_mult(features, cluster_centers, sigma, alpha, p, mixing_coefficients)
+                else:
+                    q = soft_assignments_mult(features, cluster_centers, sigma, alpha, p)
+                predicted_list.append(q.max(1)[1])
+        predicted = torch.cat(predicted_list)
         cluster_centers_list.append(cluster_centers.cpu().detach().numpy())
         cluster_centers_np = np.array(cluster_centers_list)
         sigma_np = sigma.cpu().detach().numpy()

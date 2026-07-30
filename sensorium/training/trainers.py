@@ -5,6 +5,8 @@ from tqdm import tqdm
 
 from neuralpredictors.measures import modules
 from neuralpredictors.measures import ZIGLoss
+from neuralpredictors.layers.encoders import ZIGEncoder
+from neuralpredictors.layers.encoders.mean_variance_functions import fitted_zig_mean
 from neuralpredictors.training import (
     early_stopping,
     MultipleObjectiveTracker,
@@ -26,7 +28,7 @@ def standard_trainer(
     avg_loss=False,
     scale_loss=True,
     loss_function="PoissonLoss",
-    use_zig_loss=False,
+    loss_type="poisson",
     stop_function="get_correlations",
     loss_accum_batch_n=None,
     device="cuda",
@@ -99,9 +101,13 @@ def standard_trainer(
     Returns:
 
     """
+    is_zig_model = isinstance(model, ZIGEncoder)
+    assert loss_type in ("poisson", "zig"), f"loss_type must be 'poisson' or 'zig', got {loss_type!r}"
+    if not is_zig_model:
+        assert loss_type == "poisson", "loss_type='zig' requires a ZIG-style model (readout_type zig/zig_factorized)"
     assert not (
-        include_kldivergence and use_zig_loss
-    ), "include_kldivergence and use_zig_loss cannot both be True"
+        include_kldivergence and is_zig_model
+    ), "include_kldivergence and ZIG-style readouts (zig/zig_factorized) cannot both be used"
     if kl_after_whitening:
         assert getattr(model, "whitener", None) is not None, (
             "kl_after_whitening=True requires the model to have a whitener "
@@ -225,7 +231,7 @@ def standard_trainer(
             config=wandb_config or {},
             name=wandb_name,
         )
-        if use_zig_loss:
+        if is_zig_model:
             # one-time run metadata (not a per-epoch metric, hence `summary` not `log`):
             # sanity-check the precomputed, frozen per-neuron loc/k that gamma_params_from_data.py produced.
             with torch.no_grad():
@@ -260,9 +266,16 @@ def standard_trainer(
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)
-        prediction_loss = loss_scale * (
-            criterion(targets, preds) if use_zig_loss else criterion(preds, targets)
-        )
+        if is_zig_model and loss_type == "zig":
+            # full ZIG negative log-likelihood: preds is the (theta, k, loc, q) tuple
+            prediction_loss = loss_scale * criterion(targets, preds)
+        elif is_zig_model:
+            # loss_type == "poisson": Poisson loss on the analytical mean of the predicted
+            # ZIG distribution (trains toward the conditional mean, not the full distribution)
+            theta, k, loc, q = preds
+            prediction_loss = loss_scale * criterion(fitted_zig_mean(theta, k, loc, q), targets)
+        else:
+            prediction_loss = loss_scale * criterion(preds, targets)
         loss = prediction_loss + core_reg + readout_reg
 
         return loss, (prediction_loss, core_reg, readout_reg_components)
@@ -277,7 +290,11 @@ def standard_trainer(
         size_average=False
     )  # losses are summed for each minibatch
 
-    criterion = ZIGLoss(avg=avg_loss) if use_zig_loss else getattr(modules, loss_function)(avg=avg_loss)
+    criterion = (
+        ZIGLoss(avg=avg_loss)
+        if (is_zig_model and loss_type == "zig")
+        else getattr(modules, loss_function)(avg=avg_loss)
+    )
     stop_closure = partial(
         getattr(scores, stop_function),
         dataloaders=dataloaders["validation"],
@@ -333,7 +350,7 @@ def standard_trainer(
                 avg=False,
             ),
         )
-        if use_zig_loss:
+        if is_zig_model:
             tracker_dict["mean_q"] = partial(get_mean_q, model, dataloaders["validation"], device=device)
             tracker_dict["mean_theta"] = partial(get_mean_theta, model, dataloaders["validation"], device=device)
         if hasattr(model, "tracked_values"):

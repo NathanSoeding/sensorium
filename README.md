@@ -73,6 +73,10 @@ Add `--more_data` here if you plan to train on the extra 7 sessions too (must ma
 cd training
 python launcher.py --path runs --name zig_test \
     --readout_type zig \
-    --use_zig_loss \
+    --loss_type zig \
     --gamma_params_dir ../data/gamma_params
 ```
+`--loss_type` chooses between `zig` (full ZIG negative log-likelihood, the default for
+`zig`/`zig_factorized` readouts) and `poisson` (Poisson loss on the analytical mean of the
+predicted ZIG distribution — trains toward the conditional mean instead of the full
+distribution). Non-ZIG readouts (`gaussian`, `factorized`) only support `--loss_type poisson`.

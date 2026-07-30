@@ -2,6 +2,7 @@ import json
 import torch
 
 from sensorium.models import stacked_core_full_gauss_readout, stacked_core_factorized_readout
+from sensorium.models.zig_model import stacked_core_zig_gauss_readout, stacked_core_zig_factorized_readout
 
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
@@ -21,6 +22,10 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0'):
         model = stacked_core_full_gauss_readout(dataloaders, seed, **model_config)
     elif readout_type == 'factorized':
         model = stacked_core_factorized_readout(dataloaders, seed, **model_config)
+    elif readout_type == 'zig':
+        model = stacked_core_zig_gauss_readout(dataloaders, seed, **model_config)
+    elif readout_type == 'zig_factorized':
+        model = stacked_core_zig_factorized_readout(dataloaders, seed, **model_config)
     else:
         raise ValueError(f"Unknown readout_type: {readout_type}")
 

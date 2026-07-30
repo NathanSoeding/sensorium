@@ -47,7 +47,7 @@ def get_parser():
     parser.add_argument('--dedup_mode', type=str, choices=['none', 'mean', 'random_representative'], default='none')
     parser.add_argument('--kl_after_whitening', action='store_true', default=False)
 
-    parser.add_argument('--use_zig_loss', action='store_true', default=False)
+    parser.add_argument('--loss_type', type=str, choices=['poisson', 'zig'], default='zig')
     parser.add_argument('--gamma_params_dir', type=str, default='sensorium/data/gamma_params')
 
     parser.add_argument('--lr_init', type=float, default=0.009)
@@ -58,6 +58,12 @@ def main():
     parser = get_parser()
     args = parser.parse_args()
     print(args)
+
+    if args.readout_type not in ('zig', 'zig_factorized'):
+        assert args.loss_type == 'poisson', (
+            f"--loss_type must be 'poisson' when --readout_type='{args.readout_type}' "
+            "(only zig/zig_factorized readouts support the zig loss)"
+        )
 
     random_seed = args.seed
     set_random_seed(random_seed, deterministic=False)
@@ -207,7 +213,7 @@ def main():
         'base_multiplier': args.base_multiplier,
         'kl_after_whitening': args.kl_after_whitening,
 
-        'use_zig_loss': args.use_zig_loss,
+        'loss_type': args.loss_type,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
 

@@ -56,21 +56,35 @@ def main():
     basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
     # as filenames, we'll select all 7 datasets
     filenames = [
-        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
+        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file # and (not args.more_data and ())
     ]
+    filenames = [] 
+    for file in [
+        'static23343-5-17-GrayImageNet-94c6ff995dac583098847cfecd43e7b6', 
+        'static23964-4-22-GrayImageNet-94c6ff995dac583098847cfecd43e7b6',
+        'static23656-14-22-GrayImageNet-94c6ff995dac583098847cfecd43e7b6', 
+        'static21067-10-18-GrayImageNet-94c6ff995dac583098847cfecd43e7b6', 
+        'static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6', 
+        'static22846-10-16-GrayImageNet-94c6ff995dac583098847cfecd43e7b6', 
+        'static27204-5-13-GrayImageNet-94c6ff995dac583098847cfecd43e7b6',
+    ]:
+        if not (args.more_data and '26872' in file):  # if args.more_data exclude the no behav animal
+            filenames.append(os.path.join(basepath, file))
 
     if args.more_data:
         more_basepath = "/user/turishcheva/more_data_like_sensorium_2022"
         for file in [
             "static20457-5-9-94c6ff995dac583098847cfecd43e7b6",
-            "static20622-2-14-94c6ff995dac583098847cfecd43e7b6",
-            "static20892-10-10-94c6ff995dac583098847cfecd43e7b6",
+            # "static20622-2-14-94c6ff995dac583098847cfecd43e7b6",
+            # "static20892-10-10-94c6ff995dac583098847cfecd43e7b6",
             "static22223-2-15-94c6ff995dac583098847cfecd43e7b6",
             "static22564-2-12-94c6ff995dac583098847cfecd43e7b6",
             "static22620-4-15-94c6ff995dac583098847cfecd43e7b6",
             "static23555-5-12-94c6ff995dac583098847cfecd43e7b6",
         ]:
             filenames.append(os.path.join(more_basepath, file))
+    for file in filenames:
+        print(file)
 
     dataset_fn = "sensorium.datasets.static_loaders"
     dataset_config = {

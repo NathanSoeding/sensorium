@@ -33,6 +33,9 @@ def get_parser():
     parser.add_argument('--readout_kernel_size', type=int, default=7)
     parser.add_argument('--readout_kernel_sigma', type=float, default=2.0)
     parser.add_argument('--smoothness_reg_weight', type=float, default=0.0)
+    parser.add_argument('--peak_distance_reg_weight', type=float, default=0.0)
+    parser.add_argument('--peak_distance_radius', type=float, default=8.0)
+    parser.add_argument('--concavity_reg_weight', type=float, default=0.0)
 
     parser.add_argument('--more_data', action='store_true', default=False)
     parser.add_argument('--shifter_bias', action='store_true', default=False)
@@ -46,7 +49,7 @@ def get_parser():
     parser.add_argument('--base_multiplier', type=float, default=4e3)
 
     parser.add_argument('--use_zig_loss', action='store_true', default=False)
-    parser.add_argument('--gamma_params_dir', type=str, default='sensorium/notebooks/data/gamma_params')
+    parser.add_argument('--gamma_params_dir', type=str, default='../data/gamma_params')
 
     return parser
 
@@ -63,18 +66,23 @@ def main():
 
     use_wandb = not args.no_wandb
 
-    basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
+    basepath = "/user/turishcheva/nathans_code/sensorium_original/" #"/srv/user/polina/sensorium/sensorium/notebooks/data/"
     # as filenames, we'll select all 7 datasets
-    # filenames = [
-    #     os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
-    # ]
-
+    # NOTE: these are already-extracted FileTreeDataset directories, not .zip files
+    # (FileTreeDatasetBase only auto-unzips paths ending in ".zip"; a plain directory
+    # path is used as the basepath directly), so filter on the "static" prefix instead.
     filenames = [
-        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
+        os.path.join(basepath, file)
+        for file in os.listdir(basepath)
+        if file.startswith("static") and os.path.isdir(os.path.join(basepath, file))
     ]
 
+    # filenames = [
+    #     os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
+    # ]
+
     if args.more_data:
-        more_basepath = "/user/turishcheva/more_data_like_sensorium_2022"
+        more_basepath = "/user/turishcheva/nathans_code/more_data_like_sensorium/" #"/user/turishcheva/more_data_like_sensorium_2022"
         # we should exclude mouse 20892 since it has not only V1 but also other areas!
         # We also excluded mouse 20622 since it has data from L4 and not L2/3 as all the other mice
         for file in [
@@ -97,7 +105,8 @@ def main():
         "include_behavior": True,
         "include_eye_position": True,
         "exclude_eye_position_paths": [
-            '/srv/user/polina/sensorium/sensorium/notebooks/data/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6.zip'
+            '/user/turishcheva/nathans_code/sensorium_original/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6.zip'
+            # '/srv/user/polina/sensorium/sensorium/notebooks/data/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6.zip'
         ],
         "batch_size": args.batch_size,
         "scale": 0.25,
@@ -158,6 +167,9 @@ def main():
         model_config['readout_kernel_size'] = args.readout_kernel_size
         model_config['readout_kernel_sigma'] = args.readout_kernel_sigma
         model_config['smoothness_reg_weight'] = args.smoothness_reg_weight
+        model_config['peak_distance_reg_weight'] = args.peak_distance_reg_weight
+        model_config['peak_distance_radius'] = args.peak_distance_radius
+        model_config['concavity_reg_weight'] = args.concavity_reg_weight
         model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
 
     if args.readout_type == 'zig':
@@ -182,6 +194,8 @@ def main():
         'avg_loss': False,
         'lr_init': 0.009,
         'log_smoothness': args.smoothness_reg_weight > 0.0,
+        'log_peak_distance': args.peak_distance_reg_weight > 0.0,
+        'log_concavity': args.concavity_reg_weight > 0.0,
         'device': device, 
         'wandb_project': 'small readout vectors',
         'wandb_name': args.wandb_run_name,

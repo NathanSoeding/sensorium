@@ -239,6 +239,9 @@ def stacked_core_factorized_readout(
     readout_kernel_sigma=2.0,
     temp_per_neuron=False,
     smoothness_reg_weight=0.0,
+    peak_distance_reg_weight=0.0,
+    peak_distance_radius=8.0,
+    concavity_reg_weight=0.0,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -345,6 +348,9 @@ def stacked_core_factorized_readout(
         kernel_size=readout_kernel_size,
         kernel_sigma=readout_kernel_sigma,
         smoothness_reg_weight=smoothness_reg_weight,
+        peak_distance_reg_weight=peak_distance_reg_weight,
+        peak_distance_radius=peak_distance_radius,
+        concavity_reg_weight=concavity_reg_weight,
     )
 
     if shifter is True:

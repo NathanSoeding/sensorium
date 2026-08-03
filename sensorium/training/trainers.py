@@ -45,6 +45,8 @@ def standard_trainer(
     cb=None,
     track_training=False,
     log_smoothness=False,
+    log_peak_distance=False,
+    log_concavity=False,
     detach_core=False,
     use_wandb=True,
     wandb_project=None,
@@ -216,7 +218,9 @@ def standard_trainer(
         if isinstance(reg_result, tuple):
             readout_reg, readout_reg_components = reg_result
         else:
-            readout_reg, readout_reg_components = reg_result, {"feature": reg_result, "smoothness": 0}
+            readout_reg, readout_reg_components = reg_result, {
+                "feature": reg_result, "smoothness": 0, "peak_distance": 0, "concavity": 0
+            }
 
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, **kwargs)
@@ -360,6 +364,8 @@ def standard_trainer(
         epoch_loss_core_reg = 0.0
         epoch_loss_feature_reg = 0.0
         epoch_loss_smoothness_reg = 0.0
+        epoch_loss_peak_distance_reg = 0.0
+        epoch_loss_concavity_reg = 0.0
         epoch_loss_kldiv = 0
         epoch_loss_kldiv_without_scaling = 0
         batch_count = 0
@@ -393,6 +399,10 @@ def standard_trainer(
                 epoch_loss_feature_reg += readout_reg_components['feature']
                 if log_smoothness:
                     epoch_loss_smoothness_reg += readout_reg_components['smoothness']
+                if log_peak_distance:
+                    epoch_loss_peak_distance_reg += readout_reg_components['peak_distance']
+                if log_concavity:
+                    epoch_loss_concavity_reg += readout_reg_components['concavity']
                 batch_count += 1
 
             if (batch_no + 1) % optim_step_count == 0:
@@ -451,6 +461,8 @@ def standard_trainer(
             epoch_loss_core_reg /= batch_count
             epoch_loss_feature_reg /= batch_count
             epoch_loss_smoothness_reg /= batch_count
+            epoch_loss_peak_distance_reg /= batch_count
+            epoch_loss_concavity_reg /= batch_count
         if kldiv_step_count > 0:
             epoch_loss_kldiv /= kldiv_step_count
             epoch_loss_kldiv_without_scaling /= kldiv_step_count
@@ -472,6 +484,10 @@ def standard_trainer(
                 }
                 if log_smoothness:
                     wandb_dict["Smoothness Regularizers"] = epoch_loss_smoothness_reg
+                if log_peak_distance:
+                    wandb_dict["Peak Distance Regularizer"] = epoch_loss_peak_distance_reg
+                if log_concavity:
+                    wandb_dict["Concavity Regularizer"] = epoch_loss_concavity_reg
                 if include_kldivergence:
                     wandb_dict["KL Divergence Loss"] = float(epoch_loss_kldiv)
                     wandb_dict["KL Divergence Loss (unscaled)"] = float(epoch_loss_kldiv_without_scaling)

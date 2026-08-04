@@ -4,7 +4,11 @@ import torch
 import argparse
 
 from sensorium.utility import get_data, set_random_seed
-from sensorium.models import stacked_core_full_gauss_readout, stacked_core_factorized_readout
+from sensorium.models import (
+    stacked_core_full_gauss_readout,
+    stacked_core_factorized_readout,
+    stacked_core_gaussian_retina_mean_readout,
+)
 from sensorium.models.zig_model import stacked_core_zig_gauss_readout
 from sensorium.training import standard_trainer
 import pickle
@@ -24,7 +28,7 @@ def get_parser():
     parser.add_argument('--disable_whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
 
-    parser.add_argument('--readout_type', type=str, default='factorized')
+    parser.add_argument('--readout_type', type=str, default='factorized', choices=['gaussian', 'factorized', 'fact_gaus_mean', 'zig'])
 
     parser.add_argument('--retinotopy_features', type=int, default=30)
     parser.add_argument('--retinotopy_layers', type=int, default=1)
@@ -46,7 +50,15 @@ def get_parser():
     parser.add_argument('--base_multiplier', type=float, default=4e3)
 
     parser.add_argument('--use_zig_loss', action='store_true', default=False)
-    parser.add_argument('--gamma_params_dir', type=str, default='sensorium/notebooks/data/gamma_params')
+    parser.add_argument('--gamma_params_dir', type=str, default='../data/gamma_params')
+
+    # initial learning rate only; the decay schedule (lr_decay_steps, lr_decay_factor, patience,
+    # min_lr) is deliberately left hardcoded in trainer_config below
+    parser.add_argument('--lr_init', type=float, default=0.009)
+
+    # ZIG only: train the Gamma shape k instead of freezing it at its per-neuron MLE fit.
+    # loc stays frozen regardless.
+    parser.add_argument('--learn_k', action='store_true', default=False)
 
     return parser
 
@@ -63,18 +75,19 @@ def main():
 
     use_wandb = not args.no_wandb
 
-    basepath = "/srv/user/polina/sensorium/sensorium/notebooks/data/"
-    # as filenames, we'll select all 7 datasets
-    # filenames = [
-    #     os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
-    # ]
-
-    filenames = [
-        os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
-    ]
+    basepath = "/user/turishcheva/nathans_code/sensorium_original/" #"/srv/user/polina/sensorium/sensorium/notebooks/data/"
+    if args.more_data:
+        filenames = [
+            os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file and '26872-17-20' not in file
+        ]
+    else:
+        # as filenames, we'll select all 7 datasets
+        filenames = [
+            os.path.join(basepath, file) for file in os.listdir(basepath) if ".zip" in file
+        ]
 
     if args.more_data:
-        more_basepath = "/user/turishcheva/more_data_like_sensorium_2022"
+        more_basepath = "/user/turishcheva/nathans_code/more_data_like_sensorium/" #"/user/turishcheva/more_data_like_sensorium_2022"
         # we should exclude mouse 20892 since it has not only V1 but also other areas!
         # We also excluded mouse 20622 since it has data from L4 and not L2/3 as all the other mice
         for file in [
@@ -97,7 +110,8 @@ def main():
         "include_behavior": True,
         "include_eye_position": True,
         "exclude_eye_position_paths": [
-            '/srv/user/polina/sensorium/sensorium/notebooks/data/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6.zip'
+            '/user/turishcheva/nathans_code/sensorium_original/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6.zip'
+            # '/srv/user/polina/sensorium/sensorium/notebooks/data/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6.zip'
         ],
         "batch_size": args.batch_size,
         "scale": 0.25,
@@ -160,6 +174,10 @@ def main():
         model_config['smoothness_reg_weight'] = args.smoothness_reg_weight
         model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
 
+    if args.readout_type == 'fact_gaus_mean':
+        model_config['init_sigma'] = 0.1
+        model = stacked_core_gaussian_retina_mean_readout(dataloaders, random_seed, **model_config)
+
     if args.readout_type == 'zig':
         model_config['grid_mean_predictor'] = {
             'type': 'cortex',
@@ -172,6 +190,7 @@ def main():
         model_config['init_mu_range'] = 0.3
         model_config['gauss_type'] = 'full'
         model_config['gamma_params_dir'] = args.gamma_params_dir
+        model_config['learn_k'] = args.learn_k
         model = stacked_core_zig_gauss_readout(dataloaders, random_seed, **model_config)
     print(model)
 
@@ -180,7 +199,7 @@ def main():
         'verbose': False,
         'lr_decay_steps': 4,
         'avg_loss': False,
-        'lr_init': 0.009,
+        'lr_init': args.lr_init,
         'log_smoothness': args.smoothness_reg_weight > 0.0,
         'device': device, 
         'wandb_project': 'small readout vectors',

@@ -40,6 +40,7 @@ def stacked_core_full_gauss_readout(
     pad_input=False,
     batch_norm=True,
     batch_norm_scale=[],
+    track_running_stats=False,
     hidden_dilation=1,
     laplace_padding=None,
     input_regularizer="LaplaceL2norm",
@@ -92,6 +93,7 @@ def stacked_core_full_gauss_readout(
     gaussian_spatial=None,
     predict_sigma=False,
     retinotopy_init_sigma=1.0,
+    covariance_type='scalar',
     discretized_spatial=False,
     kernel_size=7,
     sigma=2.0,
@@ -172,6 +174,7 @@ def stacked_core_full_gauss_readout(
         hidden_padding=hidden_padding,
         use_avg_reg=use_avg_reg,
         batch_norm_scale=batch_norm_scale,
+        track_running_stats=track_running_stats,
     )
 
     in_shapes_dict = {
@@ -229,6 +232,7 @@ def stacked_core_full_gauss_readout(
             gaussian_spatial=gaussian_spatial,
             predict_sigma=predict_sigma,
             init_sigma=retinotopy_init_sigma,
+            covariance_type=covariance_type,
             discretized_spatial=discretized_spatial,
             kernel_size=kernel_size,
             sigma=sigma,

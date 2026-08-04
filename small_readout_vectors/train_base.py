@@ -79,6 +79,7 @@ def get_parser():
     parser.add_argument('--gaussian', action='store_true', default=False)
     parser.add_argument('--predict_sigma', action='store_true', default=False)
     parser.add_argument('--init_sigma', type=float, default=1.0)
+    parser.add_argument('--covariance_type', type=str, default='scalar')
     parser.add_argument('--cp_every_epoch', action='store_true', default=False)
     parser.add_argument('--cp_path', type=str, default=None)
     parser.add_argument('--discretized', action='store_true', default=False)
@@ -195,6 +196,7 @@ def main():
         'gaussian_spatial': args.gaussian,
         'predict_sigma': args.predict_sigma,
         'retinotopy_init_sigma': args.init_sigma,
+        'covariance_type': args.covariance_type,
         'discretized_spatial': args.discretized,
         'kernel_size': args.kernel_size,
         'sigma': args.sigma,

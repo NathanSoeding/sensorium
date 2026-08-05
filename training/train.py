@@ -93,7 +93,7 @@ def main():
         "include_behavior": True,
         "include_eye_position": True,
         "exclude_eye_position_paths": [
-            '/srv/user/polina/sensorium/sensorium/notebooks/data/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6.zip'
+            '/srv/user/polina/sensorium/sensorium/notebooks/data/static26872-17-20-GrayImageNet-94c6ff995dac583098847cfecd43e7b6'
         ],
         "batch_size": args.batch_size,
         "scale": 0.25,

@@ -167,7 +167,6 @@ def main():
         'lr_decay_steps': 4,
         'avg_loss': False,
         'lr_init': 0.009,
-        'log_smoothness': args.smoothness_reg_weight > 0.0,
         'device': device, 
         'wandb_project': 'small readout vectors',
         'wandb_name': args.wandb_run_name,

@@ -40,7 +40,6 @@ def standard_trainer(
     min_lr=0.0001,
     cb=None,
     track_training=False,
-    log_smoothness=False,
     detach_core=False,
     use_wandb=True,
     wandb_project=None,
@@ -181,8 +180,7 @@ def standard_trainer(
         model.train()
         epoch_loss_main = 0.0
         epoch_loss_core_reg = 0.0
-        epoch_loss_feature_reg = 0.0
-        epoch_loss_smoothness_reg = 0.0
+        epoch_loss_read_regs = {}
         batch_count = 0
 
 
@@ -210,9 +208,11 @@ def standard_trainer(
             with torch.no_grad():
                 epoch_loss_main += pred_loss.item()
                 epoch_loss_core_reg += core_reg.item()
-                epoch_loss_feature_reg += readout_reg_components['feature']
-                if log_smoothness:
-                    epoch_loss_smoothness_reg += readout_reg_components['smoothness']
+                for k, v in readout_reg_components.items():
+                    if k not in epoch_loss_read_regs:
+                        epoch_loss_read_regs[k] = 0
+                    epoch_loss_read_regs[k] += v
+
                 batch_count += 1
 
             if (batch_no + 1) % optim_step_count == 0:
@@ -223,8 +223,8 @@ def standard_trainer(
         if batch_count > 0:
             epoch_loss_main /= batch_count
             epoch_loss_core_reg /= batch_count
-            epoch_loss_feature_reg /= batch_count
-            epoch_loss_smoothness_reg /= batch_count
+            for k, v in epoch_loss_read_regs.items():
+                epoch_loss_read_regs[k] /= batch_count
 
         # executes callback function if passed in keyword args
         if cb is not None:
@@ -238,12 +238,11 @@ def standard_trainer(
                 wandb_dict = {
                     "Main loss": epoch_loss_main,
                     "Core Regularizers": epoch_loss_core_reg,
-                    "Feature Regularizers": epoch_loss_feature_reg,
                     "Learning Rate": optimizer.param_groups[0]['lr'],
                 }
-                if log_smoothness:
-                    wandb_dict["Smoothness Regularizers"] = epoch_loss_smoothness_reg
-            
+                for k, v in epoch_loss_read_regs.items():
+                    wandb_dict[k] = v
+                
             # Log validation metrics from tracker
             for key in tracker.log.keys():
                 key_val = tracker.log[key][-1]

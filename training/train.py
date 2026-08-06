@@ -27,10 +27,12 @@ def get_parser():
     parser.add_argument('--retinotopy_features', type=int, default=30)
     parser.add_argument('--retinotopy_layers', type=int, default=1)
 
+    parser.add_argument('--temperature', type=float, default=0.5)
     parser.add_argument('--temp_per_neuron', action='store_true', default=False)
-    parser.add_argument('--readout_kernel_size', type=int, default=7)
-    parser.add_argument('--readout_kernel_sigma', type=float, default=2.0)
+    parser.add_argument('--readout_kernel_size', type=int, default=9)
+    parser.add_argument('--readout_kernel_sigma', type=float, default=8.0)
     parser.add_argument('--smoothness_reg_weight', type=float, default=0.0)
+    parser.add_argument('--entropy_reg_weight', type=float, default=0.0)
 
     parser.add_argument('--more_data', action='store_true', default=False)
     parser.add_argument('--shifter_bias', action='store_true', default=False)
@@ -150,10 +152,12 @@ def main():
         model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
     
     if args.readout_type == 'factorized':
+        model_config['temperature'] = args.temperature
         model_config['temp_per_neuron'] = args.temp_per_neuron
         model_config['readout_kernel_size'] = args.readout_kernel_size
         model_config['readout_kernel_sigma'] = args.readout_kernel_sigma
         model_config['smoothness_reg_weight'] = args.smoothness_reg_weight
+        model_config['entropy_reg_weight'] = args.entropy_reg_weight
         model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
     print(model)
 

@@ -94,7 +94,12 @@ def standard_trainer(
             else 1.0
         )
         core_reg = int(not detach_core) * model.core.regularizer()
-        readout_reg, readout_reg_components = model.readout.regularizer(data_key, whitener=model.whitener)
+        out = model.readout.regularizer(data_key, whitener=model.whitener)
+        if type(out) == tuple:
+            readout_reg, readout_reg_components = out
+        else:
+            readout_reg = out
+            readout_reg_components = {'feature': readout_reg.item()}
 
         imgs = args[0].to(device)
         preds = model(imgs, data_key=data_key, **kwargs)

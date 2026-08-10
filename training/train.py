@@ -29,8 +29,8 @@ def get_parser():
 
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--temp_per_neuron', action='store_true', default=False)
-    parser.add_argument('--readout_kernel_size', type=int, default=9)
-    parser.add_argument('--readout_kernel_sigma', type=float, default=8.0)
+    parser.add_argument('--readout_kernel_size', type=int, default=17)
+    parser.add_argument('--readout_kernel_sigma', type=float, default=4.0)
     parser.add_argument('--smoothness_reg_weight', type=float, default=0.0)
     parser.add_argument('--entropy_reg_weight', type=float, default=0.0)
 

@@ -73,7 +73,10 @@ def get_knn_curve(all_features, k_range=None):
 
     return (mean_curve, std_curve, constistencies), k_range
 
-def get_ari_curve(n_clusters_range, all_features):
+def get_ari_curve(all_features, n_clusters_range=None):
+    if n_clusters_range is None:
+        n_clusters_range = np.unique(np.geomspace(5, 100, num=20, dtype=int))
+
     def cluster(points, n_clusters):
         kmeans = KMeans(n_clusters=n_clusters, random_state=42)
         labels = kmeans.fit_predict(points)
@@ -94,4 +97,4 @@ def get_ari_curve(n_clusters_range, all_features):
         mean_curve.append(ari_mean)
         std_curve.append(ari_std)
     
-    return mean_curve, std_curve
+    return (mean_curve, std_curve), n_clusters_range

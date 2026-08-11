@@ -27,6 +27,7 @@ def get_parser():
     parser.add_argument('--retinotopy_features', type=int, default=30)
     parser.add_argument('--retinotopy_layers', type=int, default=1)
 
+    parser.add_argument('--spatial_init_noise', type=float, default=1.0)
     parser.add_argument('--temperature', type=float, default=1.0)
     parser.add_argument('--temp_per_neuron', action='store_true', default=False)
     parser.add_argument('--readout_kernel_size', type=int, default=17)
@@ -152,6 +153,7 @@ def main():
         model = stacked_core_full_gauss_readout(dataloaders, random_seed, **model_config)
     
     if args.readout_type == 'factorized':
+        model_config['spatial_init_noise'] = args.spatial_init_noise
         model_config['temperature'] = args.temperature
         model_config['temp_per_neuron'] = args.temp_per_neuron
         model_config['readout_kernel_size'] = args.readout_kernel_size

@@ -9,7 +9,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
 
 
-def load_model_from_config(run_dir, dataloaders, device='cuda:0'):
+def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True):
     with open(f'{run_dir}/model_config.json', 'r') as f:
         full_config = json.load(f)
 
@@ -25,7 +25,7 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0'):
         raise ValueError(f"Unknown readout_type: {readout_type}")
 
     state_dict = torch.load(f'{run_dir}/model_weights.pth', map_location=device)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=strict)
     model.to(device)
     model.eval()
 

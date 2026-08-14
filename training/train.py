@@ -40,6 +40,10 @@ def get_parser():
     parser.add_argument('--shifter_features', type=int, default=5)
     parser.add_argument('--shifter_layers', type=int, default=1)
     parser.add_argument('--init_gain', type=float, default=0.1)
+
+    parser.add_argument('--model_checkpoint', type=str, default=None)
+    parser.add_argument('--load_parts', type=str, nargs='+', default=None)
+    parser.add_argument('--freeze_parts', type=str, nargs='+', default=None)
     
     return parser
 
@@ -162,6 +166,27 @@ def main():
         model_config['entropy_reg_weight'] = args.entropy_reg_weight
         model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
     print(model)
+
+    if args.model_checkpoint is not None:
+        state_dict = torch.load(args.model_checkpoint, map_location=device)
+        
+        if args.load_parts is not None:
+            state_dict = {
+                k: v for k, v in state_dict.items()
+                if any([part in k for part in args.load_parts])
+            }
+        
+        missing, unexpected = model.load_state_dict(state_dict, strict=False)
+        loaded_keys = set(state_dict.keys())
+        print(f"Requested parts to load: {parts_to_load}")
+        print(f"Loaded {len(loaded_keys)} tensors")
+        print(f"Missing keys (not found in checkpoint / not loaded): {missing}")
+        print(f"Unexpected keys (in checkpoint but not in model): {unexpected}")
+
+    if args.freeze_parts is not None:
+        for name, param in model.named_parameters():
+            if any([part in name for part in args.freeze_parts]):
+                param.requires_grad = False
 
     trainer_config = {
         'max_iter': 200,

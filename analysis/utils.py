@@ -31,7 +31,7 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True):
 
     return model
 
-def knn_consistency(knn1, knn2, ks):
+def knn_consistency(knn1, knn2, ks, chance_adjust=False):
     N, k_max = knn1.shape
     #idcs = torch.randperm(N)
     #knn2 = knn2[idcs]
@@ -47,6 +47,10 @@ def knn_consistency(knn1, knn2, ks):
         num_shared = shared.sum() / N
         
         overlap = num_shared / k
+        if chance_adjust:
+            ev = k / N
+            overlap = (overlap - ev) / (1 - ev)
+
         overlaps.append(overlap)
 
     return np.array(overlaps)

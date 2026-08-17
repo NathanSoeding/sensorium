@@ -21,6 +21,13 @@ def get_parser():
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--disable_whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
+    parser.add_argument('--whitener_mode', type=str, choices=['ema', 'batch'], default='ema')
+    parser.add_argument('--whitener_no_detach_batch_stats', action='store_true', default=False)
+    parser.add_argument('--whitener_window_size', type=int, default=1)
+    parser.add_argument('--whitener_eps', type=float, default=1e-5)
+    parser.add_argument('--variance_floor_weight', type=float, default=0.0)
+    parser.add_argument('--variance_floor_gamma', type=float, default=1.0)
+    parser.add_argument('--decov_weight', type=float, default=0.0)
 
     parser.add_argument('--readout_type', type=str, default='factorized')
 
@@ -141,6 +148,13 @@ def main():
         'init_gain': args.init_gain,
         'whitener': not args.disable_whitener,
         'whitener_momentum': args.whitener_momentum,
+        'whitener_mode': args.whitener_mode,
+        'whitener_detach_batch_stats': not args.whitener_no_detach_batch_stats,
+        'whitener_window_size': args.whitener_window_size,
+        'whitener_eps': args.whitener_eps,
+        'variance_floor_weight': args.variance_floor_weight,
+        'variance_floor_gamma': args.variance_floor_gamma,
+        'decov_weight': args.decov_weight,
     }
 
     if args.readout_type == 'gaussian':

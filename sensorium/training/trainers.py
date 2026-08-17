@@ -105,9 +105,13 @@ def standard_trainer(
         preds = model(imgs, data_key=data_key, **kwargs)
         targets = args[1].to(device)
         prediction_loss = loss_scale * criterion(preds, targets)
-        loss = prediction_loss + core_reg + readout_reg
 
-        return loss, (prediction_loss, core_reg, readout_reg_components)
+        variance_floor_reg = model.last_variance_floor_loss
+        decov_reg = model.last_decov_loss
+
+        loss = prediction_loss + core_reg + readout_reg + variance_floor_reg + decov_reg
+
+        return loss, (prediction_loss, core_reg, readout_reg_components, variance_floor_reg, decov_reg)
         
     ##### Model training ####################################################################################################
     model.to(device)
@@ -185,6 +189,8 @@ def standard_trainer(
         model.train()
         epoch_loss_main = 0.0
         epoch_loss_core_reg = 0.0
+        epoch_loss_variance_floor = 0.0
+        epoch_loss_decov = 0.0
         epoch_loss_read_regs = {}
         batch_count = 0
 
@@ -209,10 +215,12 @@ def standard_trainer(
             )
             loss.backward()
 
-            pred_loss, core_reg, readout_reg_components = loss_components
+            pred_loss, core_reg, readout_reg_components, variance_floor_reg, decov_reg = loss_components
             with torch.no_grad():
                 epoch_loss_main += pred_loss.item()
                 epoch_loss_core_reg += core_reg.item()
+                epoch_loss_variance_floor += variance_floor_reg.item()
+                epoch_loss_decov += decov_reg.item()
                 for k, v in readout_reg_components.items():
                     if k not in epoch_loss_read_regs:
                         epoch_loss_read_regs[k] = 0
@@ -228,6 +236,8 @@ def standard_trainer(
         if batch_count > 0:
             epoch_loss_main /= batch_count
             epoch_loss_core_reg /= batch_count
+            epoch_loss_variance_floor /= batch_count
+            epoch_loss_decov /= batch_count
             for k, v in epoch_loss_read_regs.items():
                 epoch_loss_read_regs[k] /= batch_count
 
@@ -235,15 +245,40 @@ def standard_trainer(
         if cb is not None:
             cb()
 
+        whitener_diag = {}
+        if getattr(model, "whitener", None) is not None and model.whitener.mode == "batch":
+            whitener_diag = {
+                "whitener/min": model.whitener.last_min,
+                "whitener/max": model.whitener.last_max,
+                "whitener/cond": model.whitener.last_cond,
+                "whitener/min_abs_eigenvalue": model.whitener.last_min_abs_eigenvalue,
+                "whitener/max_abs_eigenvalue": model.whitener.last_max_abs_eigenvalue,
+                "whitener/raw_cond": model.whitener.last_raw_cond,
+                "whitener/raw_min_abs_eigenvalue": model.whitener.last_raw_min_abs_eigenvalue,
+                "whitener/raw_max_abs_eigenvalue": model.whitener.last_raw_max_abs_eigenvalue,
+            }
+
         model.eval()
 
         # Print and log metrics after each epoch
         if tracker is not None:
             if wandb_project and use_wandb:
+                live_whitening_diag = {}
+                if getattr(model, "whitener", None) is not None and model.whitener.mode == "batch":
+                    with model.whitener.live_stats():
+                        live_whitening_correlation = get_correlations(
+                            model, dataloaders["validation"], device=device, as_dict=False, per_neuron=False
+                        )
+                    live_whitening_diag = {"val/correlation_live_whitening": float(live_whitening_correlation)}
+
                 wandb_dict = {
                     "Main loss": epoch_loss_main,
                     "Core Regularizers": epoch_loss_core_reg,
+                    "Variance Floor Regularizer": epoch_loss_variance_floor,
+                    "DeCov Regularizer": epoch_loss_decov,
                     "Learning Rate": optimizer.param_groups[0]['lr'],
+                    **whitener_diag,
+                    **live_whitening_diag,
                 }
                 for k, v in epoch_loss_read_regs.items():
                     wandb_dict[k] = v

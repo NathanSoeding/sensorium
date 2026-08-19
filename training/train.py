@@ -34,6 +34,7 @@ def get_parser():
     parser.add_argument('--readout_kernel_sigma', type=float, default=4.0)
     parser.add_argument('--smoothness_reg_weight', type=float, default=0.0)
     parser.add_argument('--entropy_reg_weight', type=float, default=0.0)
+    parser.add_argument('--no_retinotopy', action='store_true', default=False)
 
     parser.add_argument('--more_data', action='store_true', default=False)
     parser.add_argument('--shifter_bias', action='store_true', default=False)
@@ -164,6 +165,7 @@ def main():
         model_config['readout_kernel_sigma'] = args.readout_kernel_sigma
         model_config['smoothness_reg_weight'] = args.smoothness_reg_weight
         model_config['entropy_reg_weight'] = args.entropy_reg_weight
+        model_config['retinotopy'] = not args.no_retinotopy
         model = stacked_core_factorized_readout(dataloaders, random_seed, **model_config)
     print(model)
 

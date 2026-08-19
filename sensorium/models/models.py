@@ -242,6 +242,7 @@ def stacked_core_factorized_readout(
     smoothness_reg_weight=0.0,
     entropy_reg_weight=0.0,
     spatial_init_noise=1.0,
+    retinotopy=True,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -350,6 +351,7 @@ def stacked_core_factorized_readout(
         kernel_size=readout_kernel_size,
         kernel_sigma=readout_kernel_sigma,
         smoothness_reg_weight=smoothness_reg_weight,
+        retinotopy=retinotopy,
         entropy_reg_weight=entropy_reg_weight,
     )
 

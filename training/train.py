@@ -177,15 +177,15 @@ def main():
             }
         
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
-        loaded_keys = set(state_dict.keys())
-        print(f"Requested parts to load: {parts_to_load}")
-        print(f"Loaded {len(loaded_keys)} tensors")
+        for k in state_dict.keys():
+            print(f"Loaded {k}")
         print(f"Missing keys (not found in checkpoint / not loaded): {missing}")
         print(f"Unexpected keys (in checkpoint but not in model): {unexpected}")
 
     if args.freeze_parts is not None:
         for name, param in model.named_parameters():
             if any([part in name for part in args.freeze_parts]):
+                print(f'Freezing {name}')
                 param.requires_grad = False
 
     trainer_config = {

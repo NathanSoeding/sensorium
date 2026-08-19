@@ -28,8 +28,10 @@ def get_parser():
     parser.add_argument('--variance_floor_weight', type=float, default=0.0)
     parser.add_argument('--variance_floor_gamma', type=float, default=1.0)
     parser.add_argument('--decov_weight', type=float, default=0.0)
+    parser.add_argument('--decorrelation_on_raw_features', action='store_true', default=False)
 
     parser.add_argument('--readout_type', type=str, default='factorized')
+    parser.add_argument('--regularizer_type', type=str, default='adaptive_log_norm')
 
     parser.add_argument('--retinotopy_features', type=int, default=30)
     parser.add_argument('--retinotopy_layers', type=int, default=1)
@@ -139,7 +141,7 @@ def main():
         'shift_layers': args.shifter_layers,
         'batch_norm_scale': [True, True, True, False],
         'core_bias': [True, True, True, False],
-        'regularizer_type': 'adaptive_log_norm',
+        'regularizer_type': args.regularizer_type, #'adaptive_log_norm',
         'gamma_sigma': args.gamma_sigma,
         #'readout_type': args.readout_type,
         # 'discretized_spatial': args.discretized,
@@ -155,6 +157,7 @@ def main():
         'variance_floor_weight': args.variance_floor_weight,
         'variance_floor_gamma': args.variance_floor_gamma,
         'decov_weight': args.decov_weight,
+        'decorrelation_on_raw_features': args.decorrelation_on_raw_features,
     }
 
     if args.readout_type == 'gaussian':

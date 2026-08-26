@@ -14,12 +14,12 @@ def get_parser():
     parser.add_argument('--output_dir', type=str, default="runs/")
     parser.add_argument('--hidden_channels', type=int, default=96)
     parser.add_argument('--input_kern', type=int, default=9)
-    parser.add_argument('--feature_reg_weight', type=float, default=1.0)
+    parser.add_argument('--feature_reg_weight', type=float, default=3.0)
     parser.add_argument('--gamma_sigma', type=float, default=0.25)
     parser.add_argument('--no_wandb', action='store_true', default=False)
     parser.add_argument('--wandb_run_name', type=str, default='run')
     parser.add_argument('--batch_size', type=int, default=128)
-    parser.add_argument('--disable_whitener', action='store_true', default=False)
+    parser.add_argument('--whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
 
     parser.add_argument('--readout_type', type=str, default='factorized')
@@ -140,7 +140,7 @@ def main():
         # 'kernel_size': args.kernel_size,
         # 'sigma': args.sigma,
         'init_gain': args.init_gain,
-        'whitener': not args.disable_whitener,
+        'whitener': args.whitener,
         'whitener_momentum': args.whitener_momentum,
     }
 

@@ -31,6 +31,46 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True):
 
     return model
 
+def whiten(model, dataloaders, device, num_batches=1, t_readouts=False):
+    # load batches and save feature vecs
+    features = []
+    data_keys = dataloaders.keys()
+    for key in data_keys:
+        batch_features = []
+        for i, batch in enumerate(dataloaders[key]):
+            if i == num_batches:
+                break
+
+            img, target, behav = batch[:3]
+            img = img.to(device)
+            
+            if len(batch) == 4:
+                pupil = batch[3]
+                pupil = pupil.to(device)
+            elif len(batch) == 3:
+                pupil = None
+
+            pred, feature = model(img, data_key=key, pupil_center=pupil, return_vec=True)
+            feature = feature.detach().cpu()
+            batch_features.append(feature)
+        features.append(torch.cat(batch_features))
+
+    X = torch.cat([f.flatten(0, 1) for f in features])
+    if t_readouts:
+        R = torch.cat([model.readout[k].features.squeeze().T.detach().cpu() for k in data_keys])
+    else:
+        R = torch.cat([model.readout[k].features.squeeze().detach().cpu() for k in data_keys])
+
+    # whitening
+    mu = X.mean(0, keepdim=True)
+    Xc = X - mu
+    cov = Xc.T @ Xc / (X.shape[0] - 1)
+    
+    eye = torch.eye(cov.shape[0])
+    L = torch.linalg.cholesky(cov + 1e-5 * eye)
+    Rw = R @ L
+    return Rw
+
 def knn_consistency(knn1, knn2, ks, chance_adjust=False):
     N, k_max = knn1.shape
     #idcs = torch.randperm(N)

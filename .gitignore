@@ -30,4 +30,4 @@ logs/
 *.csv
 notebooks/data
 notebooks/lurz2020
-analysis/plots/
+analysis/data/

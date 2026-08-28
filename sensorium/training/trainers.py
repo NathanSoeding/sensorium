@@ -1,4 +1,5 @@
 from functools import partial
+import warnings
 import numpy as np
 import torch
 from tqdm import tqdm
@@ -7,8 +8,10 @@ from neuralpredictors.measures import modules
 from neuralpredictors.training import (
     early_stopping,
     MultipleObjectiveTracker,
+    JointCycler,
     LongCycler,
 )
+from neuralpredictors.layers.encoders import decov_variance_floor_loss, select_decov_target_vecs
 from ..utility import scores
 from ..utility.scores import get_correlations, get_poisson_loss
 from ..utility.utils import set_random_seed
@@ -41,6 +44,7 @@ def standard_trainer(
     cb=None,
     track_training=False,
     detach_core=False,
+    joint_cycler=False,
     use_wandb=True,
     wandb_project=None,
     wandb_config=None,
@@ -73,6 +77,17 @@ def standard_trainer(
         min_lr: minimum learning rate
         cb: whether to execute callback function
         track_training: whether to track and print out the training progress
+        joint_cycler: if True, each training step draws one batch from *every* session at once
+            (via JointCycler) instead of one session per step (LongCycler). The DeCov /
+            variance-floor penalties (model.decov_weight / model.variance_floor_weight) are then
+            computed once per step from a single covariance pooled across all sessions' feature
+            vectors, with gradients flowing through every session in that step -- instead of one
+            independent per-session covariance per step, as happens by default. If
+            model.whitener is also in 'batch' mode, the whitening itself is pooled the same way:
+            all 7 sessions are whitened with one shared mean/covariance computed fresh from their
+            concatenated raw feature vectors (see Whitener.joint_whiten_batch), instead of each
+            session whitening itself from its own batch. Requires `dataloaders["train"]` to have
+            loaders of comparable batch size for all sessions.
         **kwargs:
 
     Returns:
@@ -112,7 +127,125 @@ def standard_trainer(
         loss = prediction_loss + core_reg + readout_reg + variance_floor_reg + decov_reg
 
         return loss, (prediction_loss, core_reg, readout_reg_components, variance_floor_reg, decov_reg)
-        
+
+    def joint_objective(model, dataloader, session_batches, *, detach_core=False):
+        # core_reg is data-independent (weight-based), so it must be added once per step, not once
+        # per session, or it would silently get scaled by the number of sessions.
+        core_reg = int(not detach_core) * model.core.regularizer()
+
+        def session_loss_scale_and_readout_reg(data_key, n_images):
+            loss_scale = (
+                np.sqrt(len(dataloader[data_key].dataset) / n_images) if scale_loss else 1.0
+            )
+            out = model.readout.regularizer(data_key, whitener=model.whitener)
+            if type(out) == tuple:
+                readout_reg, components = out
+            else:
+                readout_reg = out
+                components = {'feature': readout_reg.item()}
+            return loss_scale, readout_reg, components
+
+        total_prediction_loss = 0.0
+        total_readout_reg = 0.0
+        readout_reg_components = {}
+        target_vecs_per_session = []
+
+        joint_batch_whitening = model.whitener is not None and model.whitener.mode == "batch"
+
+        if not joint_batch_whitening:
+            for data_key, data in session_batches:
+                batch_args = list(data)
+                batch_kwargs = data._asdict() if not isinstance(data, dict) else data
+
+                loss_scale, readout_reg, session_readout_reg_components = session_loss_scale_and_readout_reg(
+                    data_key, batch_args[0].shape[0]
+                )
+
+                imgs = batch_args[0].to(device)
+                preds, feature_vecs = model(
+                    imgs, data_key=data_key, return_vec=True, detach_core=detach_core, **batch_kwargs
+                )
+                targets = batch_args[1].to(device)
+                prediction_loss = loss_scale * criterion(preds, targets)
+
+                total_prediction_loss = total_prediction_loss + prediction_loss
+                total_readout_reg = total_readout_reg + readout_reg
+                for k, v in session_readout_reg_components.items():
+                    v = v.item() if torch.is_tensor(v) else v
+                    readout_reg_components[k] = readout_reg_components.get(k, 0) + v
+
+                # Selected the same way as inside FiringRateEncoder.forward, but pooled across
+                # sessions below instead of turned into a loss per session.
+                target_vecs = select_decov_target_vecs(
+                    feature_vecs, model.whitener, model.decorrelation_on_raw_features
+                )
+                target_vecs_per_session.append(target_vecs.flatten(0, 1))
+        else:
+            # Phase 1: gather every session's raw (pre-whitening) feature vectors, so the
+            # whitening below pools statistics across all of them jointly instead of per session
+            # (no per-session mu/cov, no EMA/history -- see Whitener.joint_whiten_batch).
+            session_state = []
+            for data_key, data in session_batches:
+                batch_args = list(data)
+                batch_kwargs = data._asdict() if not isinstance(data, dict) else data
+
+                loss_scale, readout_reg, session_readout_reg_components = session_loss_scale_and_readout_reg(
+                    data_key, batch_args[0].shape[0]
+                )
+
+                imgs = batch_args[0].to(device)
+                core_out, raw_feature_vecs, shift = model.forward_raw(
+                    imgs, data_key=data_key, detach_core=detach_core, **batch_kwargs
+                )
+                targets = batch_args[1].to(device)
+
+                total_readout_reg = total_readout_reg + readout_reg
+                for k, v in session_readout_reg_components.items():
+                    v = v.item() if torch.is_tensor(v) else v
+                    readout_reg_components[k] = readout_reg_components.get(k, 0) + v
+
+                session_state.append(
+                    dict(
+                        data_key=data_key,
+                        loss_scale=loss_scale,
+                        core_out=core_out,
+                        raw_feature_vecs=raw_feature_vecs,
+                        shift=shift,
+                        targets=targets,
+                        behavior=batch_kwargs.get("behavior"),
+                    )
+                )
+
+            # Phase 2: one pooled mean/covariance across all sessions' raw feature vectors,
+            # with full gradient -- then finish each session's forward with its whitened slice.
+            whitened_per_session = model.whitener.joint_whiten_batch(
+                [s["raw_feature_vecs"] for s in session_state]
+            )
+
+            for s, whitened in zip(session_state, whitened_per_session):
+                preds, feature_vecs = model.forward_from_features(
+                    s["core_out"],
+                    data_key=s["data_key"],
+                    whitened_feature_vecs=whitened,
+                    shift=s["shift"],
+                    behavior=s["behavior"],
+                    return_vec=True,
+                )
+                prediction_loss = s["loss_scale"] * criterion(preds, s["targets"])
+                total_prediction_loss = total_prediction_loss + prediction_loss
+
+                target_vecs = s["raw_feature_vecs"] if model.decorrelation_on_raw_features else feature_vecs
+                target_vecs_per_session.append(target_vecs.flatten(0, 1))
+
+        pooled_target_vecs = torch.cat(target_vecs_per_session, dim=0)
+        variance_floor_reg, decov_reg = decov_variance_floor_loss(
+            pooled_target_vecs, model.decov_weight, model.variance_floor_weight, model.variance_floor_gamma
+        )
+
+        loss = total_prediction_loss + core_reg + total_readout_reg + variance_floor_reg + decov_reg
+
+        return loss, (total_prediction_loss, core_reg, readout_reg_components, variance_floor_reg, decov_reg)
+
     ##### Model training ####################################################################################################
     model.to(device)
     set_random_seed(seed)
@@ -127,7 +260,8 @@ def standard_trainer(
         avg=True,
     )
 
-    n_iterations = len(LongCycler(dataloaders["train"]))
+    cycler_cls = JointCycler if joint_cycler else LongCycler
+    n_iterations = len(cycler_cls(dataloaders["train"]))
 
     optimizer = torch.optim.Adam(model.parameters(), lr=lr_init)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
@@ -141,11 +275,19 @@ def standard_trainer(
     )
 
     # set the number of iterations over which you would like to accummulate gradients
-    optim_step_count = (
-        len(dataloaders["train"].keys())
-        if loss_accum_batch_n is None
-        else loss_accum_batch_n
-    )
+    if loss_accum_batch_n is None:
+        # With joint_cycler, one step already is a full pass over all sessions (unlike LongCycler,
+        # where the default here accumulates exactly one such pass before stepping) -- so the
+        # matching default is to step every joint step, not every len(sessions) of them.
+        optim_step_count = 1 if joint_cycler else len(dataloaders["train"].keys())
+    else:
+        optim_step_count = loss_accum_batch_n
+        if joint_cycler and loss_accum_batch_n != 1:
+            warnings.warn(
+                f"joint_cycler=True with loss_accum_batch_n={loss_accum_batch_n}: gradients will be "
+                f"accumulated over {loss_accum_batch_n} joint steps (i.e. {loss_accum_batch_n} passes "
+                "over all sessions, holding all their graphs at once) before each optimizer.step()."
+            )
 
     if wandb_project and use_wandb:
         tracker_dict = dict(
@@ -197,22 +339,28 @@ def standard_trainer(
 
         # train over batches
         optimizer.zero_grad()
-        for batch_no, (data_key, data) in tqdm(
-            enumerate(LongCycler(dataloaders["train"])),
+        for batch_no, batch in tqdm(
+            enumerate(cycler_cls(dataloaders["train"])),
             total=n_iterations,
             desc="Epoch {}".format(epoch),
         ):
 
-            batch_args = list(data)
-            batch_kwargs = data._asdict() if not isinstance(data, dict) else data
-            loss, loss_components = full_objective(
-                model,
-                dataloaders["train"],
-                data_key,
-                *batch_args,
-                **batch_kwargs,
-                detach_core=detach_core
-            )
+            if joint_cycler:
+                loss, loss_components = joint_objective(
+                    model, dataloaders["train"], batch, detach_core=detach_core
+                )
+            else:
+                data_key, data = batch
+                batch_args = list(data)
+                batch_kwargs = data._asdict() if not isinstance(data, dict) else data
+                loss, loss_components = full_objective(
+                    model,
+                    dataloaders["train"],
+                    data_key,
+                    *batch_args,
+                    **batch_kwargs,
+                    detach_core=detach_core
+                )
             loss.backward()
 
             pred_loss, core_reg, readout_reg_components, variance_floor_reg, decov_reg = loss_components

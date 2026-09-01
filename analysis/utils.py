@@ -9,7 +9,7 @@ from sklearn.cluster import KMeans
 from sklearn.metrics import adjusted_rand_score
 
 
-def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True):
+def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True, weights_path=None):
     with open(f'{run_dir}/model_config.json', 'r') as f:
         full_config = json.load(f)
 
@@ -24,14 +24,17 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True):
     else:
         raise ValueError(f"Unknown readout_type: {readout_type}")
 
-    state_dict = torch.load(f'{run_dir}/model_weights.pth', map_location=device)
+    if weights_dir is None:
+        state_dict = torch.load(f'{run_dir}/model_weights.pth', map_location=device)
+    else:
+        state_dict = torch.load(weights_dir, map_location=device)
     model.load_state_dict(state_dict, strict=strict)
     model.to(device)
     model.eval()
 
     return model
 
-def whiten(model, dataloaders, device, num_batches=1, t_readouts=False):
+def whiten(model, dataloaders, device, num_batches=1, t_readouts=False, as_dict=False):
     # load batches and save feature vecs
     features = []
     data_keys = dataloaders.keys()
@@ -57,9 +60,15 @@ def whiten(model, dataloaders, device, num_batches=1, t_readouts=False):
 
     X = torch.cat([f.flatten(0, 1) for f in features])
     if t_readouts:
-        R = torch.cat([model.readout[k].features.squeeze().T.detach().cpu() for k in data_keys])
+        R = [model.readout[k].features.squeeze().T.detach().cpu() for k in data_keys]
     else:
-        R = torch.cat([model.readout[k].features.squeeze().detach().cpu() for k in data_keys])
+        R = [model.readout[k].features.squeeze().detach().cpu() for k in data_keys]
+
+    if as_dict:
+        return dict(zip(data_keys, R))
+    else:
+        return torch.cat(R)
+
 
     # whitening
     mu = X.mean(0, keepdim=True)

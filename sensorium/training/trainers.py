@@ -45,6 +45,8 @@ def standard_trainer(
     wandb_project=None,
     wandb_config=None,
     wandb_name="",
+    cp_every_epoch=False,
+    checkpoint_dir=None,
     **kwargs
 ):
     """
@@ -188,6 +190,8 @@ def standard_trainer(
         epoch_loss_read_regs = {}
         batch_count = 0
 
+        if cp_every_epoch:
+            torch.save(model.state_dict(), f'{checkpoint_dir}/model_weights{epoch}.pth')
 
         # train over batches
         optimizer.zero_grad()

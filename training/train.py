@@ -21,6 +21,7 @@ def get_parser():
     parser.add_argument('--batch_size', type=int, default=128)
     parser.add_argument('--whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
+    parser.add_argument('--cp_every_epoch', action='store_true', default=False)
 
     parser.add_argument('--readout_type', type=str, default='factorized')
 
@@ -190,6 +191,10 @@ def main():
                 print(f'Freezing {name}')
                 param.requires_grad = False
 
+    checkpoint_dir = f'{args.output_dir}/cps'
+    if args.cp_every_epoch:
+        os.makedirs(checkpoint_dir, exist_ok=True)
+
     trainer_config = {
         'max_iter': 200,
         'verbose': False,
@@ -200,6 +205,8 @@ def main():
         'wandb_project': 'small readout vectors',
         'wandb_name': args.wandb_run_name,
         'use_wandb': use_wandb, 
+        'cp_every_epoch': args.cp_every_epoch,
+        'checkpoint_dir': checkpoint_dir,
     }
     trainer_config['wandb_config'] = model_config | trainer_config
 

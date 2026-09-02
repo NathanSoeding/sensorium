@@ -24,17 +24,17 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True, w
     else:
         raise ValueError(f"Unknown readout_type: {readout_type}")
 
-    if weights_dir is None:
+    if weights_path is None:
         state_dict = torch.load(f'{run_dir}/model_weights.pth', map_location=device)
     else:
-        state_dict = torch.load(weights_dir, map_location=device)
+        state_dict = torch.load(weights_path, map_location=device)
     model.load_state_dict(state_dict, strict=strict)
     model.to(device)
     model.eval()
 
     return model
 
-def whiten(model, dataloaders, device, num_batches=1, t_readouts=False, as_dict=False):
+def whiten(model, dataloaders, device, num_batches=1, t_readouts=False):
     # load batches and save feature vecs
     features = []
     data_keys = dataloaders.keys()
@@ -60,15 +60,9 @@ def whiten(model, dataloaders, device, num_batches=1, t_readouts=False, as_dict=
 
     X = torch.cat([f.flatten(0, 1) for f in features])
     if t_readouts:
-        R = [model.readout[k].features.squeeze().T.detach().cpu() for k in data_keys]
+        R = torch.cat([model.readout[k].features.squeeze().T.detach().cpu() for k in data_keys])
     else:
-        R = [model.readout[k].features.squeeze().detach().cpu() for k in data_keys]
-
-    if as_dict:
-        return dict(zip(data_keys, R))
-    else:
-        return torch.cat(R)
-
+        R = torch.cat([model.readout[k].features.squeeze().detach().cpu() for k in data_keys])
 
     # whitening
     mu = X.mean(0, keepdim=True)
@@ -104,7 +98,7 @@ def knn_consistency(knn1, knn2, ks, chance_adjust=False):
 
     return np.array(overlaps)
 
-def get_knn_curve(all_features, k_range=None):
+def get_knn_curve(all_features, k_range=None, chance_adjust=False):
     if k_range is None:
         k_range = np.unique(np.geomspace(1, 100, num=20, dtype=int))
 
@@ -118,7 +112,7 @@ def get_knn_curve(all_features, k_range=None):
     x_idcs, y_idcs = np.tril_indices(len(all_features), k=-1)
     constistencies = []
     for x, y in zip(x_idcs, y_idcs):
-        constistencies.append(knn_consistency(knns[x], knns[y], ks=k_range))
+        constistencies.append(knn_consistency(knns[x], knns[y], ks=k_range, chance_adjust=chance_adjust))
     constistencies = np.column_stack(constistencies)
 
     mean_curve = constistencies.mean(axis=1)
@@ -126,28 +120,117 @@ def get_knn_curve(all_features, k_range=None):
 
     return (mean_curve, std_curve, constistencies), k_range
 
-def get_ari_curve(all_features, n_clusters_range=None):
+def get_ari_curve(all_features, n_clusters_range=None, seeds=[42], pairing="features"):
+    def _cluster(points, n_clusters, seed):
+        kmeans = KMeans(n_clusters=n_clusters, random_state=seed)
+        labels = kmeans.fit_predict(points)
+        return labels
+
+    def _averaged_ari(labels_grid):
+        """
+        labels_grid: list of groups, each group a list of label arrays to pair up
+        (pairwise ARI computed within each group). Returns the mean/std of those
+        pairwise ARIs, averaged across groups.
+        """
+        n_inner = len(labels_grid[0])
+        x_idcs, y_idcs = np.tril_indices(n_inner, k=-1)
+
+        group_means, group_stds = [], []
+        for group in labels_grid:
+            aris = np.array([
+                adjusted_rand_score(group[x], group[y])
+                for x, y in zip(x_idcs, y_idcs)
+            ])
+            group_means.append(aris.mean())
+            group_stds.append(aris.std(ddof=1))
+
+        return np.mean(group_means), np.mean(group_stds)
+
     if n_clusters_range is None:
         n_clusters_range = np.unique(np.geomspace(5, 100, num=20, dtype=int))
 
-    def cluster(points, n_clusters):
-        kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-        labels = kmeans.fit_predict(points)
-        return labels
-    
-    mean_curve = []
-    std_curve = []
+    mean_curve, std_curve = [], []
+
     for n in n_clusters_range:
-        labels = [cluster(features, n) for features in all_features]
+        # labels_grid[i][j] = labels for seeds[i], all_features[j]
+        labels_grid = [
+            [_cluster(features, n, seed) for features in all_features]
+            for seed in seeds
+        ]
 
-        x_idcs, y_idcs = np.tril_indices(len(all_features), k=-1)
-        aris = np.array([
-            adjusted_rand_score(labels[x], labels[y]) for x, y in zip(x_idcs, y_idcs)
-        ])
+        if pairing == "seeds":
+            # transpose so each group is the seeds for one feature set
+            labels_grid = list(map(list, zip(*labels_grid)))
+        # pairing="features": groups are already features-within-a-seed
 
-        ari_mean = aris.mean()
-        ari_std = aris.std(ddof=1)
-        mean_curve.append(ari_mean)
-        std_curve.append(ari_std)
-    
+        mean_ari, std_ari = _averaged_ari(labels_grid)
+        mean_curve.append(mean_ari)
+        std_curve.append(std_ari)
+
     return (mean_curve, std_curve), n_clusters_range
+
+def cka(X, Y):
+    Xc = X - X.mean(0, keepdim=True)
+    Yc = Y - Y.mean(0, keepdim=True)
+
+    xy = (Xc.T @ Yc).norm(p='fro')
+    xx = (Xc.T @ Xc).norm(p='fro')
+    yy = (Yc.T @ Yc).norm(p='fro')
+
+    return xy**2 / (xx * yy)
+
+def get_cka(all_features):
+    x_idcs, y_idcs = np.tril_indices(len(all_features), k=-1)
+    ckas = np.array(
+        [cka(all_features[x], all_features[y]) 
+        for x, y in zip(x_idcs, y_idcs)]
+    )
+    cka_mean = ckas.mean()
+    cka_std = ckas.std(ddof=1)
+    return cka_mean, cka_std
+
+def rsa(X, Y, use_ranks=False, num_subsample=None):
+    X = X.double()
+    Y = Y.double()
+
+    n, d = X.shape
+    i, j = torch.tril_indices(n, n, offset=-1)
+    rmd_x = torch.cdist(X, X)[i, j]
+    rmd_y = torch.cdist(Y, Y)[i, j]
+
+    if num_subsample is not None:
+        m = rmd_x.shape[0]
+        idcs = torch.randint(0, m, (num_subsample, ))
+        rmd_x = rmd_x[idcs]
+        rmd_y = rmd_y[idcs]
+
+
+    if use_ranks:
+        rmd_x = rmd_x.argsort().argsort().double()
+        rmd_y = rmd_y.argsort().argsort().double()
+
+    xc = rmd_x - rmd_x.mean()
+    yc = rmd_y - rmd_y.mean()
+
+    return (xc @ yc) / ((xc @ xc) * (yc @ yc)).sqrt()
+
+def get_rsa(all_features, use_ranks=False, num_subsample=None):
+    x_idcs, y_idcs = np.tril_indices(len(all_features), k=-1)
+    rsas = np.array(
+        [rsa(all_features[x], all_features[y], use_ranks=use_ranks, num_subsample=num_subsample) 
+        for x, y in zip(x_idcs, y_idcs)]
+    )
+    rsa_mean = rsas.mean()
+    rsa_std = rsas.std(ddof=1)
+    return rsa_mean, rsa_std
+
+def get_metrics(all_features, k_range, n_range, chance_adjust=False, use_ranks=True, num_subsample=10_000_000):
+    metrics = {}
+
+    metrics['kNN consistency'] = get_knn_curve(all_features, k_range, chance_adjust=chance_adjust)
+    metrics['ARI'] = get_ari_curve(all_features, n_range)
+    metrics['CKA'] = get_cka(all_features)
+    metrics['RSA'] = get_rsa(all_features, use_ranks=use_ranks, num_subsample=num_subsample)
+
+    return metrics
+    

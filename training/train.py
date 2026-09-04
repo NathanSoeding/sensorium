@@ -22,6 +22,7 @@ def get_parser():
     parser.add_argument('--whitener', action='store_true', default=False)
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
     parser.add_argument('--cp_every_epoch', action='store_true', default=False)
+    parser.add_argument('--no_retinotopy', action='store_true', default=False)
 
     parser.add_argument('--readout_type', type=str, default='factorized')
 
@@ -35,7 +36,6 @@ def get_parser():
     parser.add_argument('--readout_kernel_sigma', type=float, default=4.0)
     parser.add_argument('--smoothness_reg_weight', type=float, default=0.0)
     parser.add_argument('--entropy_reg_weight', type=float, default=0.0)
-    parser.add_argument('--no_retinotopy', action='store_true', default=False)
 
     parser.add_argument('--more_data', action='store_true', default=False)
     parser.add_argument('--shifter_bias', action='store_true', default=False)
@@ -146,13 +146,14 @@ def main():
     }
 
     if args.readout_type == 'gaussian':
-        model_config['grid_mean_predictor'] = {
-            'type': 'cortex',
-            'input_dimensions': 2,
-            'hidden_layers': args.retinotopy_layers,
-            'hidden_features': args.retinotopy_features,
-            'final_tanh': True
-        }
+        if not args.no_retinotopy:
+            model_config['grid_mean_predictor'] = {
+                'type': 'cortex',
+                'input_dimensions': 2,
+                'hidden_layers': args.retinotopy_layers,
+                'hidden_features': args.retinotopy_features,
+                'final_tanh': True
+            }
         model_config['init_sigma'] = 0.1
         model_config['init_mu_range'] = 0.3
         model_config['gauss_type'] = 'full'

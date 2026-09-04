@@ -34,7 +34,7 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True, w
 
     return model
 
-def whiten(model, dataloaders, device, num_batches=1, t_readouts=False):
+def whiten(model, dataloaders, device, num_batches=1, t_readouts=False, as_dict=False):
     # load batches and save feature vecs
     features = []
     data_keys = dataloaders.keys()
@@ -59,20 +59,28 @@ def whiten(model, dataloaders, device, num_batches=1, t_readouts=False):
         features.append(torch.cat(batch_features))
 
     X = torch.cat([f.flatten(0, 1) for f in features])
-    if t_readouts:
-        R = torch.cat([model.readout[k].features.squeeze().T.detach().cpu() for k in data_keys])
-    else:
-        R = torch.cat([model.readout[k].features.squeeze().detach().cpu() for k in data_keys])
-
+    
     # whitening
     mu = X.mean(0, keepdim=True)
     Xc = X - mu
     cov = Xc.T @ Xc / (X.shape[0] - 1)
-    
     eye = torch.eye(cov.shape[0])
     L = torch.linalg.cholesky(cov + 1e-5 * eye)
-    Rw = R @ L
-    return Rw
+
+    if t_readouts:
+        readouts = [model.readout[k].features.squeeze().T.detach().cpu() for k in data_keys]
+    else:
+        readouts = [model.readout[k].features.squeeze().detach().cpu() for k in data_keys]
+    if as_dict:
+        Rws = {}
+        for key, R in zip(data_keys, readouts):
+            Rw = R @ L
+            Rws[key] = Rw
+        return Rws
+    else:
+        R = torch.cat(readouts)
+        Rw = R @ L
+        return Rw
 
 def knn_consistency(knn1, knn2, ks, chance_adjust=False):
     N, k_max = knn1.shape
@@ -224,11 +232,11 @@ def get_rsa(all_features, use_ranks=False, num_subsample=None):
     rsa_std = rsas.std(ddof=1)
     return rsa_mean, rsa_std
 
-def get_metrics(all_features, k_range, n_range, chance_adjust=False, use_ranks=True, num_subsample=10_000_000):
+def get_metrics(all_features, k_range, n_range, chance_adjust=False, seeds=[42], use_ranks=True, num_subsample=10_000_000):
     metrics = {}
 
     metrics['kNN consistency'] = get_knn_curve(all_features, k_range, chance_adjust=chance_adjust)
-    metrics['ARI'] = get_ari_curve(all_features, n_range)
+    metrics['ARI'] = get_ari_curve(all_features, n_range, seeds=seeds)
     metrics['CKA'] = get_cka(all_features)
     metrics['RSA'] = get_rsa(all_features, use_ranks=use_ranks, num_subsample=num_subsample)
 

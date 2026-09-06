@@ -60,6 +60,7 @@ def stacked_core_full_gauss_readout(
     gamma_sigma=0.25,
     whitener=None,
     whitener_momentum=0.003,
+    cor_rot_equivar=False,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -107,33 +108,59 @@ def stacked_core_full_gauss_readout(
 
     set_random_seed(seed)
     grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(grid_mean_predictor, dataloaders)
-
-    core = Stacked2dCore(
-        input_channels=core_input_channels,
-        hidden_channels=hidden_channels,
-        input_kern=input_kern,
-        hidden_kern=hidden_kern,
-        layers=layers,
-        gamma_input=gamma_input,
-        skip=skip,
-        final_nonlinearity=final_nonlinearity,
-        nonlinearity_type=nonlinearity_type,
-        bias=core_bias,
-        momentum=momentum,
-        pad_input=pad_input,
-        batch_norm=batch_norm,
-        track_running_stats=track_running_stats,
-        hidden_dilation=hidden_dilation,
-        laplace_padding=laplace_padding,
-        input_regularizer=input_regularizer,
-        stack=stack,
-        depth_separable=depth_separable,
-        linear=linear,
-        attention_conv=attention_conv,
-        hidden_padding=hidden_padding,
-        use_avg_reg=use_avg_reg,
-        batch_norm_scale=batch_norm_scale,
-    )
+    if cor_rot_equivar:
+        print("WARNING: cor_rot_equivar=True, check the number of channels as it will be multiplied by 8 in the core")
+        core = RotationEquivariant2dCore(
+            input_channels=core_input_channels,
+            hidden_channels=hidden_channels,
+            input_kern=input_kern,
+            hidden_kern=hidden_kern,
+            layers=layers,
+            gamma_input=gamma_input,
+            skip=skip,
+            final_nonlinearity=final_nonlinearity,
+            bias=core_bias,
+            momentum=momentum,
+            pad_input=pad_input,
+            batch_norm=batch_norm,
+            hidden_dilation=hidden_dilation,
+            laplace_padding=laplace_padding,
+            input_regularizer=input_regularizer,
+            stack=stack,
+            depth_separable=depth_separable,
+            linear=linear,
+            attention_conv=attention_conv,
+            hidden_padding=hidden_padding,
+            use_avg_reg=use_avg_reg,
+            batch_norm_scale=batch_norm_scale,
+        )
+    else:
+        core = Stacked2dCore(
+            input_channels=core_input_channels,
+            hidden_channels=hidden_channels,
+            input_kern=input_kern,
+            hidden_kern=hidden_kern,
+            layers=layers,
+            gamma_input=gamma_input,
+            skip=skip,
+            final_nonlinearity=final_nonlinearity,
+            nonlinearity_type=nonlinearity_type,
+            bias=core_bias,
+            momentum=momentum,
+            pad_input=pad_input,
+            batch_norm=batch_norm,
+            track_running_stats=track_running_stats,
+            hidden_dilation=hidden_dilation,
+            laplace_padding=laplace_padding,
+            input_regularizer=input_regularizer,
+            stack=stack,
+            depth_separable=depth_separable,
+            linear=linear,
+            attention_conv=attention_conv,
+            hidden_padding=hidden_padding,
+            use_avg_reg=use_avg_reg,
+            batch_norm_scale=batch_norm_scale,
+        )
 
     if whitener is True:
         whitener = Whitener(
@@ -243,6 +270,7 @@ def stacked_core_factorized_readout(
     entropy_reg_weight=0.0,
     spatial_init_noise=1.0,
     retinotopy=True,
+    cor_rot_equivar=False,
 ):
     """
     Model class of a stacked2dCore (from neuralpredictors) and a pointpooled (spatial transformer) readout
@@ -296,32 +324,59 @@ def stacked_core_factorized_readout(
     }
     grid_mean_predictor, grid_mean_predictor_type, source_grids = prepare_grid(grid_mean_predictor, dataloaders)
 
-    core = Stacked2dCore(
-        input_channels=core_input_channels,
-        hidden_channels=hidden_channels,
-        input_kern=input_kern,
-        hidden_kern=hidden_kern,
-        layers=layers,
-        gamma_input=gamma_input,
-        skip=skip,
-        final_nonlinearity=final_nonlinearity,
-        nonlinearity_type=nonlinearity_type,
-        bias=core_bias,
-        momentum=momentum,
-        pad_input=pad_input,
-        batch_norm=batch_norm,
-        track_running_stats=track_running_stats,
-        hidden_dilation=hidden_dilation,
-        laplace_padding=laplace_padding,
-        input_regularizer=input_regularizer,
-        stack=stack,
-        depth_separable=depth_separable,
-        linear=linear,
-        attention_conv=attention_conv,
-        hidden_padding=hidden_padding,
-        use_avg_reg=use_avg_reg,
-        batch_norm_scale=batch_norm_scale,
-    )
+    if cor_rot_equivar:
+        print("WARNING: cor_rot_equivar=True, check the number of channels as it will be multiplied by 8 in the core")
+        core = RotationEquivariant2dCore(
+            input_channels=core_input_channels,
+            hidden_channels=hidden_channels,
+            input_kern=input_kern,
+            hidden_kern=hidden_kern,
+            layers=layers,
+            gamma_input=gamma_input,
+            skip=skip,
+            final_nonlinearity=final_nonlinearity,
+            bias=core_bias,
+            momentum=momentum,
+            pad_input=pad_input,
+            batch_norm=batch_norm,
+            hidden_dilation=hidden_dilation,
+            laplace_padding=laplace_padding,
+            input_regularizer=input_regularizer,
+            stack=stack,
+            depth_separable=depth_separable,
+            linear=linear,
+            attention_conv=attention_conv,
+            hidden_padding=hidden_padding,
+            use_avg_reg=use_avg_reg,
+            batch_norm_scale=batch_norm_scale,
+        )
+    else:
+        core = Stacked2dCore(
+            input_channels=core_input_channels,
+            hidden_channels=hidden_channels,
+            input_kern=input_kern,
+            hidden_kern=hidden_kern,
+            layers=layers,
+            gamma_input=gamma_input,
+            skip=skip,
+            final_nonlinearity=final_nonlinearity,
+            nonlinearity_type=nonlinearity_type,
+            bias=core_bias,
+            momentum=momentum,
+            pad_input=pad_input,
+            batch_norm=batch_norm,
+            track_running_stats=track_running_stats,
+            hidden_dilation=hidden_dilation,
+            laplace_padding=laplace_padding,
+            input_regularizer=input_regularizer,
+            stack=stack,
+            depth_separable=depth_separable,
+            linear=linear,
+            attention_conv=attention_conv,
+            hidden_padding=hidden_padding,
+            use_avg_reg=use_avg_reg,
+            batch_norm_scale=batch_norm_scale,
+        )
 
     if whitener is True:
         whitener = Whitener(

@@ -34,7 +34,7 @@ def load_model_from_config(run_dir, dataloaders, device='cuda:0', strict=True, w
 
     return model
 
-def whiten(model, dataloaders, device, num_batches=1, t_readouts=False, as_dict=False):
+def whiten(model, dataloaders, device, num_batches=1, n_subsample=None, t_readouts=False, as_dict=False):
     # load batches and save feature vecs
     features = []
     data_keys = dataloaders.keys()
@@ -55,6 +55,9 @@ def whiten(model, dataloaders, device, num_batches=1, t_readouts=False, as_dict=
 
             pred, feature = model(img, data_key=key, pupil_center=pupil, return_vec=True)
             feature = feature.detach().cpu()
+            if n_subsample is not None:
+                subsample = torch.randint(0, feature.shape[0], (n_subsample, ))
+                feature = feature[subsample]
             batch_features.append(feature)
         features.append(torch.cat(batch_features))
 

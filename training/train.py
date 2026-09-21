@@ -23,6 +23,7 @@ def get_parser():
     parser.add_argument('--whitener_momentum', type=float, default=0.003)
     parser.add_argument('--cp_every_epoch', action='store_true', default=False)
     parser.add_argument('--no_retinotopy', action='store_true', default=False)
+    parser.add_argument('--cor_rot_equivar', action='store_true', default=False)
 
     parser.add_argument('--readout_type', type=str, default='factorized')
 
@@ -143,6 +144,7 @@ def main():
         'init_gain': args.init_gain,
         'whitener': args.whitener,
         'whitener_momentum': args.whitener_momentum,
+        'cor_rot_equivar': args.cor_rot_equivar,
     }
 
     if args.readout_type == 'gaussian':

@@ -53,11 +53,12 @@ def whiten(model, dataloaders, device, num_batches=1, n_subsample=None, t_readou
             elif len(batch) == 3:
                 pupil = None
 
-            pred, feature = model(img, data_key=key, pupil_center=pupil, return_vec=True)
-            feature = feature.detach().cpu()
+            with torch.no_grad():
+                pred, feature = model(img, data_key=key, pupil_center=pupil, return_vec=True)
+                feature = feature.detach().cpu()
             if n_subsample is not None:
-                subsample = torch.randint(0, feature.shape[0], (n_subsample, ))
-                feature = feature[subsample]
+                subsample = torch.randint(0, feature.shape[1], (n_subsample, ))
+                feature = feature[:, subsample, :]
             batch_features.append(feature)
         features.append(torch.cat(batch_features))
 
@@ -102,7 +103,7 @@ def knn_consistency(knn1, knn2, ks, chance_adjust=False):
         
         overlap = num_shared / k
         if chance_adjust:
-            ev = k / N
+            ev = k / (N - 1)
             overlap = (overlap - ev) / (1 - ev)
 
         overlaps.append(overlap)

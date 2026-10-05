@@ -11,7 +11,7 @@ from neuralpredictors.layers.cores import (
 )
 
 from ..utility.utils import set_random_seed, get_dims_for_loader_dict
-from .readouts import MultipleFullGaussian2d, MultipleFactorized2d
+from .readouts import MultipleFullGaussian2d, MultipleRetinotopicFactorizedLinear2d
 from .utility import prepare_grid
 
 
@@ -389,7 +389,7 @@ def stacked_core_factorized_readout(
         for k, v in session_shape_dict.items()
     }
 
-    readout = MultipleFactorized2d(
+    readout = MultipleRetinotopicFactorizedLinear2d(
         in_shape_dict=in_shapes_dict,
         loader=dataloaders,
         n_neurons_dict=n_neurons_dict,

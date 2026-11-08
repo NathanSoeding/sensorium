@@ -86,7 +86,7 @@ def whiten(model, dataloaders, device, num_batches=1, n_subsample=None, t_readou
         Rw = R @ L
         return Rw
 
-def knn_consistency(knn1, knn2, ks, chance_adjust=False):
+def knn_consistency(knn1, knn2, ks, chance_adjust=False, per_neuron=False):
     N, k_max = knn1.shape
     #idcs = torch.randperm(N)
     #knn2 = knn2[idcs]
@@ -99,18 +99,22 @@ def knn_consistency(knn1, knn2, ks, chance_adjust=False):
     for k in ks:
         neighbours = knn2[:, :k]  # Shape (N, k)
         shared = ranking[np.arange(N)[:, None], neighbours] < k  # Shape (N, k)
-        num_shared = shared.sum() / N
+        num_shared = shared.sum(axis=1)
+        # num_shared = shared.sum() / N
         
         overlap = num_shared / k
         if chance_adjust:
             ev = k / (N - 1)
             overlap = (overlap - ev) / (1 - ev)
 
-        overlaps.append(overlap)
+        if per_neuron:
+            overlaps.append(overlap)
+        else:
+            overlaps.append(overlap.mean())
 
     return np.array(overlaps)
 
-def get_knn_curve(all_features, k_range=None, chance_adjust=False):
+def get_knn_curve(all_features, k_range=None, chance_adjust=False, per_neuron=False):
     if k_range is None:
         k_range = np.unique(np.geomspace(1, 100, num=20, dtype=int))
 
@@ -124,11 +128,13 @@ def get_knn_curve(all_features, k_range=None, chance_adjust=False):
     x_idcs, y_idcs = np.tril_indices(len(all_features), k=-1)
     constistencies = []
     for x, y in zip(x_idcs, y_idcs):
-        constistencies.append(knn_consistency(knns[x], knns[y], ks=k_range, chance_adjust=chance_adjust))
-    constistencies = np.column_stack(constistencies)
-
-    mean_curve = constistencies.mean(axis=1)
-    std_curve = constistencies.std(axis=1, ddof=1)
+        consistency = knn_consistency(knns[x], knns[y], ks=k_range, chance_adjust=chance_adjust, per_neuron=per_neuron)
+        constistencies.append(consistency)
+    
+    constistencies = np.stack(constistencies, axis=-1)
+    
+    mean_curve = constistencies.mean(axis=-1)
+    std_curve = constistencies.std(axis=-1, ddof=1)
 
     return (mean_curve, std_curve, constistencies), k_range
 
@@ -153,6 +159,7 @@ def get_ari_curve(all_features, n_clusters_range=None, seeds=[42], pairing="feat
                 adjusted_rand_score(group[x], group[y])
                 for x, y in zip(x_idcs, y_idcs)
             ])
+            print(aris.shape)
             group_means.append(aris.mean())
             group_stds.append(aris.std(ddof=1))
 
